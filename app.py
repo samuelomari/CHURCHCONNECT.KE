@@ -209,9 +209,28 @@ def login():
 
     conn.execute('UPDATE users SET failed_attempts = 0, locked_until = NULL WHERE id = ?', (user['id'],))
     conn.commit()
+
+    # Auto-generate member record if user has none
+    member_id = user['member_id']
+    if not member_id:
+        member_id = 'mem-' + str(uuid.uuid4())[:8]
+        names = user['full_name'].split(' ', 1)
+        first_name = names[0]
+        last_name = names[1] if len(names) > 1 else 'Member'
+        year = datetime.now().year
+        count = conn.execute('SELECT COUNT(*) as c FROM members').fetchone()['c']
+        member_num = f"SDA-{year}-{str(count + 1).zfill(4)}"
+        conn.execute('''
+            INSERT INTO members (id, member_number, first_name, last_name, phone, email, gender, status)
+            VALUES (?, ?, ?, ?, ?, ?, 'MALE', 'ACTIVE')
+        ''', (member_id, member_num, first_name, last_name, user['phone'], user['email']))
+        conn.execute('UPDATE users SET member_id = ? WHERE id = ?', (member_id, user['id']))
+        conn.commit()
+
     conn.close()
 
     user_dict = dict(user)
+    user_dict['member_id'] = member_id  # ensure auto-generated id is in token
     del user_dict['password_hash']
     del user_dict['failed_attempts']
     del user_dict['locked_until']
@@ -1399,10 +1418,13 @@ def get_dashboard_overview():
 def get_all_users():
     conn = get_db_connection()
     users = conn.execute('''
-        SELECT id, email, full_name, role, phone, active FROM users
-        WHERE role != 'PASTOR'
-        ORDER BY full_name ASC
-    ''').fetchall()
+        SELECT u.id, u.email, u.full_name, u.role, u.phone, u.active, u.member_id,
+               m.member_number
+        FROM users u
+        LEFT JOIN members m ON u.member_id = m.id
+        WHERE u.id != ?
+        ORDER BY u.full_name ASC
+    ''', (g.user['id'],)).fetchall()
     conn.close()
     return jsonify([dict(u) for u in users])
 
@@ -1419,7 +1441,8 @@ def assign_user_role(user_id):
         return jsonify({'error': 'Invalid role specified'}), 400
 
     conn = get_db_connection()
-    user = conn.execute('SELECT id, full_name, role FROM users WHERE id = ?', (user_id,)).fetchone()
+    user = conn.execute('SELECT id, full_name, role FROM users WHERE id = ? AND id != ?',
+                        (user_id, g.user['id'])).fetchone()
     if not user:
         conn.close()
         return jsonify({'error': 'User not found'}), 404

@@ -1485,7 +1485,7 @@ const loadRoleManagement = async () => {
     if (!tbody) return;
 
     if (users.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--text-muted);padding:24px;">No registered users found.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--text-muted);padding:24px;">No registered users found.</td></tr>';
       return;
     }
 
@@ -1493,9 +1493,10 @@ const loadRoleManagement = async () => {
       <tr>
         <td><strong>${u.full_name}</strong></td>
         <td>${u.email}</td>
+        <td><span style="font-size:11.5px;color:var(--text-muted);">${u.member_number || 'Auto-assigned on login'}</span></td>
         <td><span class="badge badge-info">${u.role.replace(/_/g, ' ')}</span></td>
         <td>
-          <button class="btn btn-outline btn-sm" onclick="openAssignRoleModal('${u.id}', '${u.full_name}', '${u.role}')">
+          <button class="btn btn-outline btn-sm" onclick="openAssignRoleModal('${u.id}', '${u.full_name.replace(/'/g, "&#39;")}', '${u.role}')">
             Change Role
           </button>
         </td>
