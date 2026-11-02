@@ -45,13 +45,33 @@
             Sign In to ChurchConnect
           </button>
 
-          <!-- Quick Persona Testing -->
+          <!-- Quick Demo Sign-In for Elders, Officers and Members -->
           <div class="quick-demo-accounts">
-            <div class="quick-demo-title">Quick Demo Sign-In:</div>
+            <div class="quick-demo-title">Quick Demo Sign-In (Select Persona):</div>
             <div class="demo-account-grid">
               <button type="button" class="demo-btn" onclick="quickFillLogin('pastor@churchconnect.ke', 'password123')">
                 <strong>Pr. David Ochieng</strong>
                 <span>Church Pastor</span>
+              </button>
+              <button type="button" class="demo-btn" onclick="quickFillLogin('elder.samuel@churchconnect.ke', 'password123')">
+                <strong>Elder Samuel Omari</strong>
+                <span>First Elder</span>
+              </button>
+              <button type="button" class="demo-btn" onclick="quickFillLogin('treasurer@churchconnect.ke', 'password123')">
+                <strong>Grace Wanjiku</strong>
+                <span>Head Treasurer</span>
+              </button>
+              <button type="button" class="demo-btn" onclick="quickFillLogin('clerk@churchconnect.ke', 'password123')">
+                <strong>Ruth Chebet</strong>
+                <span>Church Clerk</span>
+              </button>
+              <button type="button" class="demo-btn" onclick="quickFillLogin('youth.leader@churchconnect.ke', 'password123')">
+                <strong>Kevin Mwangi</strong>
+                <span>Youth Leader</span>
+              </button>
+              <button type="button" class="demo-btn" style="border-color: var(--sda-gold);" onclick="quickFillLogin('john.k@gmail.com', 'password123')">
+                <strong>John Kariuki</strong>
+                <span style="color: var(--sda-gold-hover); font-weight: 600;">Church Member</span>
               </button>
             </div>
           </div>
