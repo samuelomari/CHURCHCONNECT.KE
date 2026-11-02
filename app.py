@@ -33,6 +33,10 @@ def validate_password_strength(pw: str) -> tuple[bool, str]:
 # -------------------------------------------------------------
 # Frontend Views & Public Digital Receipt Verification
 # -------------------------------------------------------------
+@app.route('/health')
+def health():
+    return jsonify({'status': 'ok', 'service': 'churchconnect-kenya'}), 200
+
 @app.route('/')
 def index():
     return render_template('index.html')
@@ -367,7 +371,7 @@ def create_envelope():
     conn = get_db_connection()
     year = datetime.now().year
     count = conn.execute('SELECT COUNT(*) as c FROM tithe_offering_envelopes').fetchone()['c']
-    receipt_num = f"CCK-{year}-{str(count + 1).zfill(5)}"
+    receipt_num = f"REC-{year}-{str(count + 1).zfill(5)}"
     envelope_id = 'env-' + str(uuid.uuid4())[:8]
     now_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
@@ -1114,7 +1118,7 @@ def simulate_mpesa():
 
     year = datetime.now().year
     count = conn.execute('SELECT COUNT(*) as c FROM tithe_offering_envelopes').fetchone()['c']
-    rec_num = f"CCK-{year}-{str(count + 1).zfill(5)}"
+    rec_num = f"REC-{year}-{str(count + 1).zfill(5)}"
     env_id = 'env-' + str(uuid.uuid4())[:8]
     now_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     v_code = generate_verification_code(rec_num, amount, now_str)
@@ -1129,7 +1133,7 @@ def simulate_mpesa():
         INSERT INTO tithe_offering_envelopes (
             id, receipt_number, verification_code, member_id, donor_name, donor_phone, payment_method,
             payment_status, mpesa_receipt_number, total_amount, status, notes, recorded_by_id
-        ) VALUES (?, ?, ?, ?, ?, 'MPESA', 'VERIFIED_PROVIDER', ?, ?, 'CONFIRMED', ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, 'MPESA', 'VERIFIED_PROVIDER', ?, ?, 'CONFIRMED', ?, ?)
     ''', (env_id, rec_num, v_code, member_id, recorded_name, phone, test_receipt, amount, f"Safaricom M-Pesa Inflow (Ref: {account_ref})", recorder_id))
 
     conn.execute('''
@@ -1404,4 +1408,5 @@ def get_audit_logs():
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
-    app.run(host='0.0.0.0', port=port, debug=True)
+    debug = os.environ.get('FLASK_DEBUG', 'false').lower() in ('1', 'true', 'yes')
+    app.run(host='0.0.0.0', port=port, debug=debug)
