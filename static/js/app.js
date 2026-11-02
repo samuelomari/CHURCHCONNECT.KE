@@ -1256,6 +1256,161 @@ const submitMember = async (e) => {
 };
 
 // ==========================================
+// BOARD MINUTES & RESOLUTIONS
+// ==========================================
+const loadMeetings = async () => {
+  try {
+    const meetings = await api('/api/meetings');
+    const container = document.getElementById('meetings-container');
+    if (!container) return;
+
+    if (meetings.length === 0) {
+      container.innerHTML = '<p style="color:var(--text-muted);padding:20px;text-align:center;">No board meetings recorded yet.</p>';
+      return;
+    }
+
+    container.innerHTML = meetings.map(m => {
+      const statusColors = { COMPLETED: 'badge-success', IN_PROGRESS: 'badge-info', PENDING: 'badge-warning' };
+      const resolutionsHtml = m.resolutions && m.resolutions.length > 0
+        ? `<table class="data-table" style="margin-top:12px;">
+            <thead><tr><th>Resolution #</th><th>Title</th><th>Assigned Officer</th><th>Status</th><th>Due Date</th></tr></thead>
+            <tbody>
+              ${m.resolutions.map(r => `
+                <tr>
+                  <td><strong>${r.resolution_number}</strong></td>
+                  <td>
+                    <strong>${r.title}</strong>
+                    <div style="font-size:11px;color:var(--text-muted);">${r.description}</div>
+                  </td>
+                  <td>${r.assigned_officer_name || '<span style="color:var(--text-muted);">Unassigned</span>'}</td>
+                  <td><span class="badge ${statusColors[r.status] || 'badge-secondary'}">${r.status.replace('_',' ')}</span></td>
+                  <td style="font-size:11.5px;">${r.due_date ? r.due_date.split(' ')[0] : '-'}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>`
+        : '<p style="font-size:12.5px;color:var(--text-muted);margin-top:8px;">No resolutions recorded for this meeting.</p>';
+
+      return `
+        <div style="border:1px solid var(--border);border-radius:var(--radius);margin-bottom:20px;overflow:hidden;">
+          <div style="background:var(--sda-blue);color:#fff;padding:14px 18px;display:flex;justify-content:space-between;align-items:center;">
+            <div>
+              <strong style="font-size:14px;">${m.title}</strong>
+              <div style="font-size:11.5px;color:#cbd5e1;margin-top:2px;">
+                <span class="badge badge-secondary" style="background:rgba(255,255,255,0.2);">${m.meeting_type.replace(/_/g,' ')}</span>
+                &nbsp; ${m.date.split(' ')[0]}
+              </div>
+            </div>
+            <div style="font-size:12px;color:#cbd5e1;text-align:right;">
+              Chair: <strong style="color:#fff;">${m.chairperson_name || '-'}</strong><br>
+              Secretary: <strong style="color:#fff;">${m.secretary_name || '-'}</strong>
+            </div>
+          </div>
+          <div style="padding:16px 18px;">
+            <div style="font-size:13px;font-weight:600;color:var(--sda-blue-dark);margin-bottom:6px;">Minutes</div>
+            <p style="font-size:13px;color:var(--text-main);line-height:1.6;white-space:pre-wrap;background:#f8fafc;padding:12px;border-radius:6px;border:1px solid var(--border);">${m.minutes_text}</p>
+            <div style="font-size:13px;font-weight:600;color:var(--sda-blue-dark);margin-top:16px;margin-bottom:4px;">Action Resolutions (${m.resolutions ? m.resolutions.length : 0})</div>
+            ${resolutionsHtml}
+          </div>
+        </div>
+      `;
+    }).join('');
+  } catch (err) {}
+};
+
+const openNewMeetingModal = async () => {
+  const chairSelect = document.getElementById('mtg-chair');
+  const secSelect = document.getElementById('mtg-sec');
+  try {
+    const officers = await api('/api/officers');
+    const opts = '<option value="">-- Select --</option>' +
+      officers.map(o => `<option value="${o.id}">${o.full_name} (${o.role.replace(/_/g,' ')})</option>`).join('');
+    if (chairSelect) chairSelect.innerHTML = opts;
+    if (secSelect) secSelect.innerHTML = opts;
+  } catch (_) {}
+  // Reset resolutions
+  document.getElementById('mtg-resolutions-list').innerHTML = '';
+  openModal('modal-meeting');
+};
+
+const addResolutionRow = () => {
+  const list = document.getElementById('mtg-resolutions-list');
+  const idx = list.children.length;
+  const div = document.createElement('div');
+  div.style.cssText = 'border:1px solid var(--border);border-radius:6px;padding:12px;margin-bottom:10px;background:#f8fafc;';
+  div.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+      <strong style="font-size:12.5px;color:var(--sda-blue-dark);">Resolution ${idx + 1}</strong>
+      <button type="button" class="btn btn-danger btn-sm" onclick="this.closest('div[data-res]').remove()" style="padding:2px 8px;">Remove</button>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Resolution #</label>
+        <input type="text" class="form-control res-num" placeholder="e.g. RES-2026-047" required>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Title</label>
+        <input type="text" class="form-control res-title" placeholder="Short title" required>
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Description / Action</label>
+      <textarea class="form-control res-desc" rows="2" placeholder="Detailed action item..." required></textarea>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Assigned Officer</label>
+        <select class="form-control res-officer">
+          ${document.getElementById('mtg-chair').innerHTML}
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Due Date</label>
+        <input type="date" class="form-control res-due">
+      </div>
+    </div>
+  `;
+  div.setAttribute('data-res', idx);
+  list.appendChild(div);
+};
+
+const submitMeeting = async (e) => {
+  e.preventDefault();
+  const resolutionDivs = document.querySelectorAll('#mtg-resolutions-list [data-res]');
+  const resolutions = Array.from(resolutionDivs).map(div => ({
+    resolution_number: div.querySelector('.res-num').value.trim(),
+    title: div.querySelector('.res-title').value.trim(),
+    description: div.querySelector('.res-desc').value.trim(),
+    assigned_officer_id: div.querySelector('.res-officer').value || null,
+    due_date: div.querySelector('.res-due').value || null
+  }));
+
+  const payload = {
+    title: document.getElementById('mtg-title').value.trim(),
+    meeting_type: document.getElementById('mtg-type').value,
+    date: document.getElementById('mtg-date').value,
+    chairperson_id: document.getElementById('mtg-chair').value || null,
+    secretary_id: document.getElementById('mtg-sec').value || null,
+    minutes_text: document.getElementById('mtg-minutes').value.trim(),
+    resolutions
+  };
+
+  if (!payload.title || !payload.date || !payload.minutes_text) {
+    showToast('Title, date and minutes text are required', 'warning');
+    return;
+  }
+
+  try {
+    await api('/api/meetings', { method: 'POST', body: JSON.stringify(payload) });
+    showToast('Board minutes recorded successfully!', 'success');
+    closeModal('modal-meeting');
+    document.getElementById('form-meeting').reset();
+    document.getElementById('mtg-resolutions-list').innerHTML = '';
+    loadMeetings();
+  } catch (err) {}
+};
+
+// ==========================================
 // CHURCH ASSETS & INVENTORY
 // ==========================================
 const loadAssets = async () => {

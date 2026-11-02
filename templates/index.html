@@ -712,7 +712,7 @@
           <div class="panel-card">
             <div class="panel-card-header">
               <div class="panel-card-title">Church Board Minutes & Action Resolutions</div>
-              <span class="badge badge-info">Elders & Board Council</span>
+              <button class="btn btn-primary btn-sm" onclick="openNewMeetingModal()">+ Record Minutes</button>
             </div>
             <div class="panel-card-body" id="meetings-container">
               <!-- Injected via JS -->
@@ -1449,6 +1449,63 @@
         <button type="button" class="btn btn-outline" onclick="closeModal('modal-assign-role')">Cancel</button>
         <button type="button" class="btn btn-primary" onclick="executeRoleAssignment()">Save Role</button>
       </div>
+    </div>
+  </div>
+
+  <!-- Record Board Minutes Modal -->
+  <div class="modal-overlay" id="modal-meeting">
+    <div class="modal-container" style="max-width: 720px;">
+      <div class="modal-header">
+        <h3 class="modal-title">Record Board Meeting Minutes</h3>
+        <button class="modal-close" onclick="closeModal('modal-meeting')">&times;</button>
+      </div>
+      <form id="form-meeting" onsubmit="submitMeeting(event)">
+        <div class="modal-body">
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Meeting Title</label>
+              <input type="text" id="mtg-title" class="form-control" placeholder="e.g. Q1 Church Board & Finance Council" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Meeting Type</label>
+              <select id="mtg-type" class="form-control">
+                <option value="CHURCH_BOARD">Church Board</option>
+                <option value="ELDERS_COUNCIL">Elders Council</option>
+                <option value="BUSINESS_MEETING">Business Meeting</option>
+                <option value="DEPARTMENTAL">Departmental Meeting</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Date</label>
+              <input type="date" id="mtg-date" class="form-control" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Chairperson</label>
+              <select id="mtg-chair" class="form-control"><option value="">-- Select --</option></select>
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Secretary</label>
+            <select id="mtg-sec" class="form-control"><option value="">-- Select --</option></select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Minutes / Summary</label>
+            <textarea id="mtg-minutes" class="form-control" rows="4" placeholder="Record the full meeting minutes here..." required></textarea>
+          </div>
+
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-top:16px;margin-bottom:8px;">
+            <strong style="font-size:13px;color:var(--sda-blue-dark);">Action Resolutions</strong>
+            <button type="button" class="btn btn-outline btn-sm" onclick="addResolutionRow()">+ Add Resolution</button>
+          </div>
+          <div id="mtg-resolutions-list"></div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline" onclick="closeModal('modal-meeting')">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save Minutes</button>
+        </div>
+      </form>
     </div>
   </div>
 

@@ -870,6 +870,47 @@ def get_meetings():
     conn.close()
     return jsonify(result)
 
+@app.route('/api/meetings', methods=['POST'])
+@login_required
+@roles_required('PASTOR', 'FIRST_ELDER', 'CHURCH_CLERK')
+def create_meeting():
+    data = request.get_json() or {}
+    title = data.get('title', '').strip()
+    meeting_type = data.get('meeting_type', 'CHURCH_BOARD')
+    date = data.get('date', '').strip()
+    chairperson_id = data.get('chairperson_id')
+    secretary_id = data.get('secretary_id')
+    minutes_text = data.get('minutes_text', '').strip()
+    resolutions = data.get('resolutions', [])
+
+    if not title or not date or not minutes_text:
+        return jsonify({'error': 'Title, date and minutes text are required'}), 400
+
+    conn = get_db_connection()
+    mtg_id = 'mtg-' + str(uuid.uuid4())[:8]
+    conn.execute('''
+        INSERT INTO meetings (id, title, meeting_type, date, chairperson_id, secretary_id, minutes_text)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+    ''', (mtg_id, title, meeting_type, date, chairperson_id, secretary_id, minutes_text))
+
+    for r in resolutions:
+        res_num = r.get('resolution_number', '').strip()
+        res_title = r.get('title', '').strip()
+        res_desc = r.get('description', '').strip()
+        if not res_num or not res_title or not res_desc:
+            continue
+        conn.execute('''
+            INSERT INTO resolutions (id, meeting_id, resolution_number, title, description, assigned_officer_id, due_date)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        ''', (str(uuid.uuid4()), mtg_id, res_num, res_title, res_desc,
+              r.get('assigned_officer_id'), r.get('due_date')))
+
+    conn.commit()
+    conn.close()
+
+    create_audit_log(g.user['id'], 'RECORD_BOARD_MINUTES', 'Meeting', mtg_id, {'title': title, 'date': date})
+    return jsonify({'id': mtg_id, 'title': title}), 201
+
 # -------------------------------------------------------------
 # Database Disaster Recovery / Availability Backup
 # -------------------------------------------------------------
