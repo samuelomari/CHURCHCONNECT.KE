@@ -323,6 +323,58 @@ def init_db():
         created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
     );
+
+    CREATE TABLE IF NOT EXISTS church_documents (
+        id TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        category TEXT NOT NULL DEFAULT 'GENERAL',
+        description TEXT,
+        file_content TEXT,
+        file_type TEXT DEFAULT 'TEXT',
+        audience TEXT NOT NULL DEFAULT 'OFFICERS',
+        uploaded_by_id TEXT,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (uploaded_by_id) REFERENCES users(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS departmental_activities (
+        id TEXT PRIMARY KEY,
+        department_id TEXT NOT NULL,
+        title TEXT NOT NULL,
+        description TEXT,
+        activity_date TEXT NOT NULL,
+        participants_count INTEGER DEFAULT 0,
+        outcome TEXT,
+        recorded_by_id TEXT,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (department_id) REFERENCES departments(id),
+        FOREIGN KEY (recorded_by_id) REFERENCES users(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS member_status_history (
+        id TEXT PRIMARY KEY,
+        member_id TEXT NOT NULL,
+        old_status TEXT,
+        new_status TEXT NOT NULL,
+        reason TEXT,
+        changed_by_id TEXT,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (member_id) REFERENCES members(id) ON DELETE CASCADE,
+        FOREIGN KEY (changed_by_id) REFERENCES users(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS notifications (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        title TEXT NOT NULL,
+        message TEXT NOT NULL,
+        type TEXT NOT NULL DEFAULT 'INFO',
+        is_read INTEGER NOT NULL DEFAULT 0,
+        related_entity TEXT,
+        related_entity_id TEXT,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
     ''')
 
     # Safe column migrations if database already existed

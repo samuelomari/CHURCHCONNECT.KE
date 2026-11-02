@@ -332,6 +332,19 @@ const renderNavigation = (role) => {
         <span class="nav-icon"></span>
         <span>SDA Monthly Statement</span>
       </a>
+      <a class="nav-link" onclick="navigate('annual-report')">
+        <span class="nav-icon"></span>
+        <span>Annual Report</span>
+      </a>
+      <a class="nav-link" onclick="navigate('documents')">
+        <span class="nav-icon"></span>
+        <span>Church Documents</span>
+      </a>
+      <a class="nav-link" onclick="navigate('notifications')">
+        <span class="nav-icon"></span>
+        <span>Notifications</span>
+        <span class="nav-badge" id="notif-badge" style="display:none;">0</span>
+      </a>
       <a class="nav-link" onclick="navigate('audit')">
         <span class="nav-icon"></span>
         <span>Audit Trail</span>
@@ -402,6 +415,9 @@ const navigate = (sectionId) => {
     'events': { title: 'Events & Attendance', sub: 'Church calendar, programmes, and Sabbath attendance logs' },
     'accountability': { title: 'Church Accountability Centre', sub: 'Financial governance oversight, recording attribution, and threshold alerts' },
     'reports': { title: 'SDA Monthly Financial Statement', sub: 'Conference trust remittance calculation and local church balance sheet' },
+    'annual-report': { title: 'Annual Financial Report', sub: 'Year-end income, expenditure and fund performance summary' },
+    'documents': { title: 'Church Documents', sub: 'Meeting minutes, policies, circulars and administrative records' },
+    'notifications': { title: 'My Notifications', sub: 'System alerts and activity updates' },
     'roles': { title: 'Manage Member Roles', sub: 'Assign church officer roles to registered members' },
     'audit': { title: 'Audit Trail', sub: 'Immutable log of administrative and financial activities' }
   };
@@ -428,6 +444,9 @@ const loadSectionData = async (sectionId) => {
   else if (sectionId === 'events') loadEvents();
   else if (sectionId === 'accountability') loadAccountabilityCenter();
   else if (sectionId === 'reports') loadSdaMonthlyReport();
+  else if (sectionId === 'annual-report') loadAnnualReport();
+  else if (sectionId === 'documents') loadDocuments();
+  else if (sectionId === 'notifications') loadNotifications();
   else if (sectionId === 'roles') loadRoleManagement();
   else if (sectionId === 'audit') loadAuditLogs();
 };
@@ -445,6 +464,26 @@ const loadCommonData = async () => {
     state.departments = depts;
 
     populateModalDropdowns();
+
+    // Populate annual report year selector
+    const yearSel = document.getElementById('annual-report-year');
+    if (yearSel) {
+      const currentYear = new Date().getFullYear();
+      yearSel.innerHTML = [0,1,2,3].map(i =>
+        `<option value="${currentYear - i}">${currentYear - i}</option>`
+      ).join('');
+    }
+
+    // Load notification badge count
+    try {
+      const notifData = await api('/api/notifications');
+      const badge = document.getElementById('notif-badge');
+      if (badge && notifData.unread_count > 0) {
+        badge.style.display = 'inline-block';
+        badge.innerText = notifData.unread_count;
+      }
+    } catch (_) {}
+
   } catch (err) {
     console.error('Error loading common data:', err);
   }
@@ -1904,6 +1943,367 @@ const executeRoleAssignment = async () => {
     showToast(res.message, 'success');
     closeModal('modal-assign-role');
     loadRoleManagement();
+  } catch (err) {}
+};
+
+// ==========================================
+// ACCOUNTABILITY CENTRE
+// ==========================================
+const loadAccountabilityCenter = async () => {
+  try {
+    const data = await api('/api/accountability/summary');
+
+    const officersBody = document.getElementById('table-acct-officers-body');
+    if (officersBody) {
+      officersBody.innerHTML = data.transactions_by_officer.length > 0
+        ? data.transactions_by_officer.map(o => `
+          <tr>
+            <td><strong>${o.full_name}</strong></td>
+            <td><span class="badge badge-info">${o.role.replace(/_/g,' ')}</span></td>
+            <td style="text-align:center;">${o.receipts_count}</td>
+            <td><strong style="color:var(--sda-blue);">${formatKES(o.total_collected)}</strong></td>
+          </tr>`).join('')
+        : '<tr><td colspan="4" style="text-align:center;color:var(--text-muted);padding:16px;">No transactions recorded yet.</td></tr>';
+    }
+
+    const warningsEl = document.getElementById('acct-budget-warnings-container');
+    if (warningsEl) {
+      warningsEl.innerHTML = data.budget_warnings.length > 0
+        ? data.budget_warnings.map(d => `
+          <div style="background:#fef3c7;border-left:4px solid var(--warning);padding:10px 12px;border-radius:4px;margin-bottom:8px;font-size:13px;">
+            <strong>${d.name}</strong> — ${d.pct_used}% utilized
+            <div style="font-size:11.5px;color:var(--text-muted);margin-top:2px;">Spent: ${formatKES(d.budget_spent)} / Allocated: ${formatKES(d.budget_allocation)}</div>
+          </div>`).join('')
+        : '<p style="color:var(--text-muted);font-size:13px;">No departments exceeding 80% budget utilization.</p>';
+    }
+
+    const reversalsBody = document.getElementById('table-acct-reversals-body');
+    if (reversalsBody) {
+      reversalsBody.innerHTML = data.reversals_history.length > 0
+        ? data.reversals_history.map(r => `
+          <tr>
+            <td><strong>${r.receipt_number}</strong></td>
+            <td><strong style="color:var(--danger);">${formatKES(r.original_amount)}</strong></td>
+            <td style="font-size:11.5px;">${r.reversal_reason}</td>
+            <td>${r.reversed_by_name}</td>
+            <td style="font-size:11.5px;">${r.created_at.split(' ')[0]}</td>
+          </tr>`).join('')
+        : '<tr><td colspan="5" style="text-align:center;color:var(--text-muted);padding:16px;">No reversals on record.</td></tr>';
+    }
+
+    const decisionsBody = document.getElementById('table-acct-decisions-body');
+    if (decisionsBody) {
+      decisionsBody.innerHTML = data.recent_approval_decisions.length > 0
+        ? data.recent_approval_decisions.map(d => `
+          <tr>
+            <td><strong>${d.voucher_number}</strong></td>
+            <td>${d.voucher_title}</td>
+            <td>${d.voter_name}</td>
+            <td><span class="badge ${d.decision === 'APPROVE' ? 'badge-success' : 'badge-danger'}">${d.decision}</span></td>
+          </tr>`).join('')
+        : '<tr><td colspan="4" style="text-align:center;color:var(--text-muted);padding:16px;">No committee votes recorded.</td></tr>';
+    }
+  } catch (err) {}
+};
+
+// ==========================================
+// RECEIPT MODAL & REVERSAL
+// ==========================================
+const openReceiptModal = async (receiptRef) => {
+  try {
+    const data = await api(`/verify-receipt/${receiptRef}`);
+    const content = document.getElementById('receipt-modal-content');
+    if (!content) return;
+    content.innerHTML = `
+      <div style="text-align:center;margin-bottom:16px;">
+        <div style="font-size:11px;color:var(--text-muted);letter-spacing:1px;">SEVENTH-DAY ADVENTIST CHURCH (KENYA)</div>
+        <div style="font-size:18px;font-weight:700;color:var(--sda-blue-dark);margin:4px 0;">${data.receipt_number}</div>
+        <span class="badge badge-success">Digitally Verified</span>
+      </div>
+      <div style="background:#f8fafc;border-radius:6px;padding:14px;font-size:13px;line-height:1.8;">
+        <div><strong>Donor:</strong> ${data.donor}</div>
+        <div><strong>Date:</strong> ${data.transaction_date ? data.transaction_date.split(' ')[0] : '-'}</div>
+        <div><strong>Method:</strong> ${data.payment_method}</div>
+        <div><strong>Verification Code:</strong> <code style="font-size:11px;">${data.verification_code}</code></div>
+      </div>
+      <div style="margin-top:14px;">
+        <strong style="font-size:12.5px;color:var(--sda-blue-dark);">Fund Allocations</strong>
+        ${(data.allocations || []).map(a => `
+          <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border);font-size:13px;">
+            <span>${a.fund_name}</span><strong>${formatKES(a.amount)}</strong>
+          </div>`).join('')}
+        <div style="display:flex;justify-content:space-between;padding:8px 0;font-size:14px;">
+          <strong>Total</strong><strong style="color:var(--sda-blue);">${formatKES(data.total_amount)}</strong>
+        </div>
+      </div>
+      <div style="font-size:10.5px;color:var(--text-muted);text-align:center;margin-top:12px;">${data.authenticity_stamp}</div>
+    `;
+    openModal('modal-view-receipt');
+  } catch (err) {}
+};
+
+const openReverseModal = (envelopeId, receiptNumber, amount) => {
+  document.getElementById('rev-envelope-id').value = envelopeId;
+  document.getElementById('rev-envelope-summary').innerHTML =
+    `Receipt: <strong>${receiptNumber}</strong> | Amount: <strong style="color:var(--danger);">${formatKES(amount)}</strong>`;
+  document.getElementById('rev-envelope-reason').value = '';
+  openModal('modal-reverse-envelope');
+};
+
+const executeEnvelopeReversal = async () => {
+  const id = document.getElementById('rev-envelope-id').value;
+  const reason = document.getElementById('rev-envelope-reason').value.trim();
+  if (!reason) { showToast('A reversal reason is required', 'warning'); return; }
+  try {
+    const res = await api(`/api/finance/envelopes/${id}/reverse`, {
+      method: 'POST', body: JSON.stringify({ reason })
+    });
+    showToast(res.message, 'success');
+    closeModal('modal-reverse-envelope');
+    loadTreasury();
+  } catch (err) {}
+};
+
+// ==========================================
+// COMMITTEE VOTE MODAL
+// ==========================================
+const openCommitteeVoteModal = (id, num, title, amt) => {
+  document.getElementById('vote-voucher-id').value = id;
+  document.getElementById('vote-voucher-summary').innerHTML =
+    `<strong>${num}</strong>: ${title}<br>Amount: <strong style="color:var(--sda-blue);">${formatKES(amt)}</strong>`;
+  openModal('modal-committee-vote');
+};
+
+const executeCommitteeVote = async () => {
+  const id = document.getElementById('vote-voucher-id').value;
+  const decision = document.getElementById('vote-decision').value;
+  const notes = document.getElementById('vote-notes').value;
+  try {
+    const res = await api(`/api/finance/vouchers/${id}/committee-vote`, {
+      method: 'POST', body: JSON.stringify({ decision, notes })
+    });
+    showToast(res.message, 'success');
+    closeModal('modal-committee-vote');
+    loadVouchers();
+    loadDashboard();
+  } catch (err) {}
+};
+
+// ==========================================
+// DATABASE BACKUP
+// ==========================================
+const downloadDisasterRecoveryBackup = async () => {
+  try {
+    const data = await api('/api/admin/backup');
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `churchconnect-backup-${new Date().toISOString().split('T')[0]}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast('Database backup downloaded successfully', 'success');
+  } catch (err) {}
+};
+
+// ==========================================
+// ANNUAL FINANCIAL REPORT
+// ==========================================
+const loadAnnualReport = async () => {
+  const year = document.getElementById('annual-report-year')?.value || new Date().getFullYear();
+  try {
+    const report = await api(`/api/finance/reports/annual?year=${year}`);
+    const container = document.getElementById('annual-report-content');
+    if (!container) return;
+
+    const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const monthlyMap = {};
+    report.monthly_giving.forEach(m => {
+      const key = parseInt(m.month) - 1;
+      if (!monthlyMap[key]) monthlyMap[key] = { conference: 0, local: 0 };
+      if (m.fund_type === 'CONFERENCE_TRUST') monthlyMap[key].conference += m.total;
+      else monthlyMap[key].local += m.total;
+    });
+    const expMap = {};
+    report.monthly_expenditure.forEach(m => { expMap[parseInt(m.month) - 1] = m.total; });
+
+    container.innerHTML = `
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:24px;">
+        <div class="stat-card gold"><div class="stat-card-title"><span>Total Income</span></div><div class="stat-card-value">${formatKES(report.totals.grand_total)}</div></div>
+        <div class="stat-card"><div class="stat-card-title"><span>Conference Trust</span></div><div class="stat-card-value">${formatKES(report.totals.conference_total)}</div></div>
+        <div class="stat-card amber"><div class="stat-card-title"><span>Total Expenditure</span></div><div class="stat-card-value">${formatKES(report.total_expenditure)}</div></div>
+        <div class="stat-card green"><div class="stat-card-title"><span>Net Surplus</span></div><div class="stat-card-value">${formatKES(report.net_surplus)}</div></div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:24px;">
+        <div class="panel-card">
+          <div class="panel-card-header"><div class="panel-card-title">Monthly Income vs Expenditure</div></div>
+          <div class="panel-card-body table-responsive" style="padding:0;">
+            <table class="data-table">
+              <thead><tr><th>Month</th><th>Conference</th><th>Local</th><th>Expenditure</th></tr></thead>
+              <tbody>
+                ${months.map((m, i) => `
+                  <tr>
+                    <td><strong>${m}</strong></td>
+                    <td>${formatKES(monthlyMap[i]?.conference || 0)}</td>
+                    <td>${formatKES(monthlyMap[i]?.local || 0)}</td>
+                    <td style="color:var(--danger);">${formatKES(expMap[i] || 0)}</td>
+                  </tr>`).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div class="panel-card">
+          <div class="panel-card-header"><div class="panel-card-title">Expenditure by Department</div></div>
+          <div class="panel-card-body table-responsive" style="padding:0;">
+            <table class="data-table">
+              <thead><tr><th>Department</th><th>Total Spent</th></tr></thead>
+              <tbody>
+                ${report.department_expenditure.length > 0
+                  ? report.department_expenditure.map(d => `<tr><td><strong>${d.name}</strong></td><td>${formatKES(d.total_spent)}</td></tr>`).join('')
+                  : '<tr><td colspan="2" style="text-align:center;color:var(--text-muted);">No expenditure recorded</td></tr>'}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel-card">
+        <div class="panel-card-header"><div class="panel-card-title">Fund Category Breakdown</div></div>
+        <div class="panel-card-body table-responsive" style="padding:0;">
+          <table class="data-table">
+            <thead><tr><th>Fund</th><th>Type</th><th>Total Collected</th></tr></thead>
+            <tbody>
+              ${report.fund_breakdown.filter(f => f.total > 0).map(f => `
+                <tr>
+                  <td><strong>${f.name}</strong></td>
+                  <td><span class="badge ${f.fund_type === 'CONFERENCE_TRUST' ? 'badge-warning' : 'badge-info'}">${f.fund_type.replace('_',' ')}</span></td>
+                  <td><strong>${formatKES(f.total)}</strong></td>
+                </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `;
+  } catch (err) {}
+};
+
+// ==========================================
+// CHURCH DOCUMENTS
+// ==========================================
+const loadDocuments = async () => {
+  try {
+    const docs = await api('/api/documents');
+    const container = document.getElementById('documents-container');
+    if (!container) return;
+
+    const canUpload = ['PASTOR','FIRST_ELDER','CHURCH_CLERK','HEAD_TREASURER','AUDITOR'].includes(state.currentUser?.role);
+    const uploadBtn = document.getElementById('btn-upload-document');
+    if (uploadBtn) uploadBtn.style.display = canUpload ? 'inline-flex' : 'none';
+
+    if (docs.length === 0) {
+      container.innerHTML = '<p style="color:var(--text-muted);padding:20px;text-align:center;">No documents uploaded yet.</p>';
+      return;
+    }
+
+    const catColors = { POLICY: 'badge-warning', MINUTES: 'badge-info', CIRCULAR: 'badge-secondary', FINANCIAL: 'badge-success', GENERAL: 'badge-secondary' };
+    container.innerHTML = docs.map(d => `
+      <div style="border:1px solid var(--border);border-radius:var(--radius);padding:16px;margin-bottom:12px;">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+          <div>
+            <div style="font-weight:600;font-size:14px;color:var(--sda-blue-dark);">${d.title}</div>
+            <div style="font-size:11.5px;color:var(--text-muted);margin-top:3px;">
+              <span class="badge ${catColors[d.category] || 'badge-secondary'}">${d.category}</span>
+              &nbsp; Uploaded by ${d.uploaded_by_name} &nbsp;|&nbsp; ${d.created_at.split(' ')[0]}
+              &nbsp;|&nbsp; <span class="badge badge-secondary">${d.audience}</span>
+            </div>
+            ${d.description ? `<p style="font-size:12.5px;color:var(--text-main);margin-top:6px;">${d.description}</p>` : ''}
+          </div>
+          <div style="display:flex;gap:6px;">
+            <button class="btn btn-outline btn-sm" onclick="viewDocument('${d.id}')">View</button>
+            ${['PASTOR','CHURCH_CLERK'].includes(state.currentUser?.role) ? `<button class="btn btn-danger btn-sm" onclick="deleteDocument('${d.id}', '${d.title.replace(/'/g,"&#39;")}')">Delete</button>` : ''}
+          </div>
+        </div>
+      </div>
+    `).join('');
+  } catch (err) {}
+};
+
+const viewDocument = async (docId) => {
+  try {
+    const docs = await api('/api/documents');
+    const doc = docs.find(d => d.id === docId);
+    if (!doc) return;
+    document.getElementById('doc-view-title').innerText = doc.title;
+    document.getElementById('doc-view-content').innerText = doc.file_content;
+    openModal('modal-view-document');
+  } catch (err) {}
+};
+
+const openUploadDocumentModal = () => openModal('modal-upload-document');
+
+const submitDocument = async (e) => {
+  e.preventDefault();
+  const payload = {
+    title: document.getElementById('doc-title').value.trim(),
+    category: document.getElementById('doc-category').value,
+    description: document.getElementById('doc-description').value.trim(),
+    file_content: document.getElementById('doc-content').value.trim(),
+    audience: document.getElementById('doc-audience').value
+  };
+  try {
+    await api('/api/documents', { method: 'POST', body: JSON.stringify(payload) });
+    showToast('Document uploaded successfully!', 'success');
+    closeModal('modal-upload-document');
+    document.getElementById('form-document').reset();
+    loadDocuments();
+  } catch (err) {}
+};
+
+const deleteDocument = async (docId, title) => {
+  if (!confirm(`Delete document "${title}"? This cannot be undone.`)) return;
+  try {
+    await api(`/api/documents/${docId}`, { method: 'DELETE' });
+    showToast('Document deleted', 'success');
+    loadDocuments();
+  } catch (err) {}
+};
+
+// ==========================================
+// NOTIFICATIONS
+// ==========================================
+const loadNotifications = async () => {
+  try {
+    const data = await api('/api/notifications');
+    const container = document.getElementById('notifications-container');
+    if (!container) return;
+
+    // Update badge
+    const badge = document.getElementById('notif-badge');
+    if (badge) {
+      badge.style.display = data.unread_count > 0 ? 'inline-block' : 'none';
+      badge.innerText = data.unread_count;
+    }
+
+    if (data.notifications.length === 0) {
+      container.innerHTML = '<p style="color:var(--text-muted);padding:20px;text-align:center;">No notifications yet.</p>';
+      return;
+    }
+
+    container.innerHTML = data.notifications.map(n => `
+      <div style="border-left:4px solid ${n.is_read ? 'var(--border)' : 'var(--sda-blue)'};padding:12px 16px;margin-bottom:8px;background:${n.is_read ? '#fff' : '#eff6ff'};border-radius:0 6px 6px 0;">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <strong style="font-size:13px;color:var(--sda-blue-dark);">${n.title}</strong>
+          <span style="font-size:11px;color:var(--text-muted);">${n.created_at.split(' ')[0]}</span>
+        </div>
+        <p style="font-size:12.5px;color:var(--text-main);margin-top:4px;">${n.message}</p>
+      </div>
+    `).join('');
+
+    if (data.unread_count > 0) {
+      await api('/api/notifications/mark-read', { method: 'POST' });
+      if (badge) badge.style.display = 'none';
+    }
   } catch (err) {}
 };
 

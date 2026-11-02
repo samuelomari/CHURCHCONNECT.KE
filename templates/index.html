@@ -852,6 +852,45 @@
           </div>
         </section>
 
+        <!-- ANNUAL FINANCIAL REPORT -->
+        <section id="section-annual-report" class="app-section">
+          <div class="panel-card" style="margin-bottom:16px;">
+            <div class="panel-card-header">
+              <div class="panel-card-title">Annual Financial Report</div>
+              <div style="display:flex;gap:10px;align-items:center;">
+                <select id="annual-report-year" class="form-control" style="width:120px;" onchange="loadAnnualReport()">
+                </select>
+                <button class="btn btn-outline btn-sm" onclick="window.print()">Print</button>
+              </div>
+            </div>
+            <div class="panel-card-body" id="annual-report-content">
+              <p style="color:var(--text-muted);">Loading annual report...</p>
+            </div>
+          </div>
+        </section>
+
+        <!-- CHURCH DOCUMENTS -->
+        <section id="section-documents" class="app-section">
+          <div class="panel-card">
+            <div class="panel-card-header">
+              <div class="panel-card-title">Church Documents & Records</div>
+              <button class="btn btn-primary btn-sm" id="btn-upload-document" onclick="openUploadDocumentModal()" style="display:none;">+ Upload Document</button>
+            </div>
+            <div class="panel-card-body" id="documents-container"></div>
+          </div>
+        </section>
+
+        <!-- NOTIFICATIONS -->
+        <section id="section-notifications" class="app-section">
+          <div class="panel-card">
+            <div class="panel-card-header">
+              <div class="panel-card-title">My Notifications</div>
+              <span class="badge badge-info">Activity Alerts</span>
+            </div>
+            <div class="panel-card-body" id="notifications-container"></div>
+          </div>
+        </section>
+
       </main>
     </div>
   </div>
@@ -1574,6 +1613,74 @@
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-outline" onclick="closeModal('modal-member-contributions')">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Upload Document Modal -->
+  <div class="modal-overlay" id="modal-upload-document">
+    <div class="modal-container">
+      <div class="modal-header">
+        <h3 class="modal-title">Upload Church Document</h3>
+        <button class="modal-close" onclick="closeModal('modal-upload-document')">&times;</button>
+      </div>
+      <form id="form-document" onsubmit="submitDocument(event)">
+        <div class="modal-body">
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Document Title</label>
+              <input type="text" id="doc-title" class="form-control" placeholder="e.g. Church Constitution 2026" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Category</label>
+              <select id="doc-category" class="form-control">
+                <option value="GENERAL">General</option>
+                <option value="POLICY">Policy / Constitution</option>
+                <option value="MINUTES">Meeting Minutes</option>
+                <option value="CIRCULAR">Conference Circular</option>
+                <option value="FINANCIAL">Financial Report</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Audience</label>
+              <select id="doc-audience" class="form-control">
+                <option value="OFFICERS">Officers Only</option>
+                <option value="ALL">All Members</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Description (Optional)</label>
+              <input type="text" id="doc-description" class="form-control" placeholder="Brief summary">
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Document Content</label>
+            <textarea id="doc-content" class="form-control" rows="8" placeholder="Paste or type the full document content here..." required></textarea>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline" onclick="closeModal('modal-upload-document')">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save Document</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- View Document Modal -->
+  <div class="modal-overlay" id="modal-view-document">
+    <div class="modal-container" style="max-width:700px;">
+      <div class="modal-header">
+        <h3 class="modal-title" id="doc-view-title">Document</h3>
+        <button class="modal-close" onclick="closeModal('modal-view-document')">&times;</button>
+      </div>
+      <div class="modal-body">
+        <pre id="doc-view-content" style="white-space:pre-wrap;font-size:13px;line-height:1.7;background:#f8fafc;padding:16px;border-radius:6px;border:1px solid var(--border);max-height:500px;overflow-y:auto;"></pre>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline" onclick="closeModal('modal-view-document')">Close</button>
+        <button type="button" class="btn btn-primary" onclick="window.print()">Print</button>
       </div>
     </div>
   </div>

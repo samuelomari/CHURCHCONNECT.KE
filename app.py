@@ -1656,6 +1656,261 @@ def get_audit_logs():
     conn.close()
     return jsonify([dict(l) for l in logs])
 
+# -------------------------------------------------------------
+# Church Documents
+# -------------------------------------------------------------
+@app.route('/api/documents', methods=['GET'])
+@login_required
+def get_documents():
+    conn = get_db_connection()
+    query = '''
+        SELECT d.*, u.full_name as uploaded_by_name
+        FROM church_documents d
+        LEFT JOIN users u ON d.uploaded_by_id = u.id
+        WHERE 1=1
+    '''
+    if g.user['role'] == 'MEMBER':
+        query += " AND d.audience = 'ALL'"
+    query += ' ORDER BY d.created_at DESC'
+    docs = conn.execute(query).fetchall()
+    conn.close()
+    return jsonify([dict(d) for d in docs])
+
+@app.route('/api/documents', methods=['POST'])
+@login_required
+@roles_required('PASTOR', 'FIRST_ELDER', 'CHURCH_CLERK', 'HEAD_TREASURER', 'AUDITOR')
+def create_document():
+    data = request.get_json() or {}
+    title = data.get('title', '').strip()
+    category = data.get('category', 'GENERAL')
+    description = data.get('description', '').strip()
+    file_content = data.get('file_content', '').strip()
+    audience = data.get('audience', 'OFFICERS')
+
+    if not title or not file_content:
+        return jsonify({'error': 'Title and content are required'}), 400
+
+    doc_id = 'doc-' + str(uuid.uuid4())[:8]
+    conn = get_db_connection()
+    conn.execute('''
+        INSERT INTO church_documents (id, title, category, description, file_content, audience, uploaded_by_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+    ''', (doc_id, title, category, description, file_content, audience, g.user['id']))
+    conn.commit()
+    conn.close()
+    create_audit_log(g.user['id'], 'UPLOAD_DOCUMENT', 'ChurchDocument', doc_id, {'title': title, 'category': category})
+    return jsonify({'id': doc_id, 'title': title}), 201
+
+@app.route('/api/documents/<doc_id>', methods=['DELETE'])
+@login_required
+@roles_required('PASTOR', 'CHURCH_CLERK')
+def delete_document(doc_id):
+    conn = get_db_connection()
+    doc = conn.execute('SELECT * FROM church_documents WHERE id = ?', (doc_id,)).fetchone()
+    if not doc:
+        conn.close()
+        return jsonify({'error': 'Document not found'}), 404
+    conn.execute('DELETE FROM church_documents WHERE id = ?', (doc_id,))
+    conn.commit()
+    conn.close()
+    create_audit_log(g.user['id'], 'DELETE_DOCUMENT', 'ChurchDocument', doc_id, {'title': doc['title']})
+    return jsonify({'message': 'Document deleted'})
+
+# -------------------------------------------------------------
+# Departmental Activities
+# -------------------------------------------------------------
+@app.route('/api/departments/<dept_id>/activities', methods=['GET'])
+@login_required
+def get_dept_activities(dept_id):
+    conn = get_db_connection()
+    activities = conn.execute('''
+        SELECT a.*, u.full_name as recorded_by_name, d.name as department_name
+        FROM departmental_activities a
+        JOIN departments d ON a.department_id = d.id
+        LEFT JOIN users u ON a.recorded_by_id = u.id
+        WHERE a.department_id = ?
+        ORDER BY a.activity_date DESC
+    ''', (dept_id,)).fetchall()
+    conn.close()
+    return jsonify([dict(a) for a in activities])
+
+@app.route('/api/departments/<dept_id>/activities', methods=['POST'])
+@login_required
+@roles_required('PASTOR', 'FIRST_ELDER', 'CHURCH_CLERK', 'DEPARTMENT_LEADER')
+def create_dept_activity(dept_id):
+    data = request.get_json() or {}
+    title = data.get('title', '').strip()
+    description = data.get('description', '').strip()
+    activity_date = data.get('activity_date', datetime.now().strftime('%Y-%m-%d'))
+    participants = int(data.get('participants_count', 0))
+    outcome = data.get('outcome', '').strip()
+
+    if not title:
+        return jsonify({'error': 'Activity title is required'}), 400
+
+    conn = get_db_connection()
+    dept = conn.execute('SELECT id, name FROM departments WHERE id = ?', (dept_id,)).fetchone()
+    if not dept:
+        conn.close()
+        return jsonify({'error': 'Department not found'}), 404
+
+    act_id = 'act-' + str(uuid.uuid4())[:8]
+    conn.execute('''
+        INSERT INTO departmental_activities (id, department_id, title, description, activity_date, participants_count, outcome, recorded_by_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    ''', (act_id, dept_id, title, description, activity_date, participants, outcome, g.user['id']))
+    conn.commit()
+    conn.close()
+    create_audit_log(g.user['id'], 'RECORD_DEPT_ACTIVITY', 'DepartmentalActivity', act_id,
+                     {'department': dept['name'], 'title': title, 'date': activity_date})
+    return jsonify({'id': act_id, 'title': title}), 201
+
+# -------------------------------------------------------------
+# Member Status Management
+# -------------------------------------------------------------
+@app.route('/api/members/<member_id>/status', methods=['PATCH'])
+@login_required
+@roles_required('PASTOR', 'FIRST_ELDER', 'CHURCH_CLERK')
+def update_member_status(member_id):
+    data = request.get_json() or {}
+    new_status = data.get('status', '').strip()
+    reason = data.get('reason', '').strip()
+
+    valid_statuses = ['ACTIVE', 'INACTIVE', 'TRANSFERRED', 'DECEASED', 'DISFELLOWSHIPPED']
+    if new_status not in valid_statuses:
+        return jsonify({'error': f'Invalid status. Must be one of: {", ".join(valid_statuses)}'}), 400
+
+    conn = get_db_connection()
+    member = conn.execute('SELECT * FROM members WHERE id = ?', (member_id,)).fetchone()
+    if not member:
+        conn.close()
+        return jsonify({'error': 'Member not found'}), 404
+
+    hist_id = 'msh-' + str(uuid.uuid4())[:8]
+    conn.execute('''
+        INSERT INTO member_status_history (id, member_id, old_status, new_status, reason, changed_by_id)
+        VALUES (?, ?, ?, ?, ?, ?)
+    ''', (hist_id, member_id, member['status'], new_status, reason, g.user['id']))
+    conn.execute('UPDATE members SET status = ? WHERE id = ?', (new_status, member_id))
+    conn.commit()
+    conn.close()
+    create_audit_log(g.user['id'], 'UPDATE_MEMBER_STATUS', 'Member', member_id,
+                     {'name': f"{member['first_name']} {member['last_name']}", 'old': member['status'], 'new': new_status, 'reason': reason})
+    return jsonify({'message': f"Member status updated to {new_status}", 'status': new_status})
+
+@app.route('/api/members/<member_id>/status-history', methods=['GET'])
+@login_required
+@roles_required('PASTOR', 'FIRST_ELDER', 'CHURCH_CLERK', 'AUDITOR')
+def get_member_status_history(member_id):
+    conn = get_db_connection()
+    history = conn.execute('''
+        SELECT h.*, u.full_name as changed_by_name
+        FROM member_status_history h
+        LEFT JOIN users u ON h.changed_by_id = u.id
+        WHERE h.member_id = ?
+        ORDER BY h.created_at DESC
+    ''', (member_id,)).fetchall()
+    conn.close()
+    return jsonify([dict(h) for h in history])
+
+# -------------------------------------------------------------
+# Notifications
+# -------------------------------------------------------------
+@app.route('/api/notifications', methods=['GET'])
+@login_required
+def get_notifications():
+    conn = get_db_connection()
+    notes = conn.execute('''
+        SELECT * FROM notifications WHERE user_id = ?
+        ORDER BY created_at DESC LIMIT 30
+    ''', (g.user['id'],)).fetchall()
+    unread = conn.execute('SELECT COUNT(*) as c FROM notifications WHERE user_id = ? AND is_read = 0', (g.user['id'],)).fetchone()['c']
+    conn.close()
+    return jsonify({'notifications': [dict(n) for n in notes], 'unread_count': unread})
+
+@app.route('/api/notifications/mark-read', methods=['POST'])
+@login_required
+def mark_notifications_read():
+    conn = get_db_connection()
+    conn.execute('UPDATE notifications SET is_read = 1 WHERE user_id = ?', (g.user['id'],))
+    conn.commit()
+    conn.close()
+    return jsonify({'message': 'All notifications marked as read'})
+
+# -------------------------------------------------------------
+# Annual Financial Report
+# -------------------------------------------------------------
+@app.route('/api/finance/reports/annual', methods=['GET'])
+@login_required
+@roles_required('PASTOR', 'FIRST_ELDER', 'HEAD_TREASURER', 'ASSISTANT_TREASURER', 'AUDITOR', 'AUTHORIZED_ELDER_READONLY')
+def get_annual_report():
+    year = request.args.get('year', datetime.now().year)
+    conn = get_db_connection()
+
+    monthly_giving = conn.execute('''
+        SELECT strftime('%m', e.transaction_date) as month,
+               fc.fund_type,
+               COALESCE(SUM(ei.amount), 0) as total
+        FROM envelope_items ei
+        JOIN tithe_offering_envelopes e ON ei.envelope_id = e.id
+        JOIN fund_categories fc ON ei.fund_category_id = fc.id
+        WHERE strftime('%Y', e.transaction_date) = ? AND e.status = 'CONFIRMED'
+        GROUP BY month, fc.fund_type
+        ORDER BY month ASC
+    ''', (str(year),)).fetchall()
+
+    monthly_expenditure = conn.execute('''
+        SELECT strftime('%m', paid_at) as month, COALESCE(SUM(amount), 0) as total
+        FROM expenditure_vouchers
+        WHERE strftime('%Y', paid_at) = ? AND status = 'PAID'
+        GROUP BY month ORDER BY month ASC
+    ''', (str(year),)).fetchall()
+
+    top_funds = conn.execute('''
+        SELECT fc.name, fc.code, fc.fund_type, COALESCE(SUM(ei.amount), 0) as total
+        FROM fund_categories fc
+        LEFT JOIN envelope_items ei ON fc.id = ei.fund_category_id
+        LEFT JOIN tithe_offering_envelopes e ON ei.envelope_id = e.id
+        WHERE (e.status = 'CONFIRMED' OR e.id IS NULL)
+          AND (strftime('%Y', e.transaction_date) = ? OR e.id IS NULL)
+        GROUP BY fc.id ORDER BY total DESC
+    ''', (str(year),)).fetchall()
+
+    dept_expenditure = conn.execute('''
+        SELECT d.name, d.code, COALESCE(SUM(v.amount), 0) as total_spent
+        FROM departments d
+        LEFT JOIN expenditure_vouchers v ON d.id = v.department_id
+        WHERE v.status = 'PAID' AND strftime('%Y', v.paid_at) = ?
+        GROUP BY d.id ORDER BY total_spent DESC
+    ''', (str(year),)).fetchall()
+
+    totals = conn.execute('''
+        SELECT
+            COALESCE(SUM(CASE WHEN fc.fund_type = 'CONFERENCE_TRUST' THEN ei.amount ELSE 0 END), 0) as conference_total,
+            COALESCE(SUM(CASE WHEN fc.fund_type = 'LOCAL_CHURCH' THEN ei.amount ELSE 0 END), 0) as local_total,
+            COALESCE(SUM(ei.amount), 0) as grand_total
+        FROM envelope_items ei
+        JOIN tithe_offering_envelopes e ON ei.envelope_id = e.id
+        JOIN fund_categories fc ON ei.fund_category_id = fc.id
+        WHERE strftime('%Y', e.transaction_date) = ? AND e.status = 'CONFIRMED'
+    ''', (str(year),)).fetchone()
+
+    total_paid = conn.execute(
+        "SELECT COALESCE(SUM(amount),0) as s FROM expenditure_vouchers WHERE status='PAID' AND strftime('%Y', paid_at) = ?",
+        (str(year),)).fetchone()['s']
+
+    conn.close()
+    return jsonify({
+        'year': year,
+        'totals': dict(totals),
+        'total_expenditure': float(total_paid),
+        'net_surplus': float(totals['local_total']) - float(total_paid),
+        'monthly_giving': [dict(m) for m in monthly_giving],
+        'monthly_expenditure': [dict(m) for m in monthly_expenditure],
+        'fund_breakdown': [dict(f) for f in top_funds],
+        'department_expenditure': [dict(d) for d in dept_expenditure]
+    })
+
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     debug = os.environ.get('FLASK_DEBUG', 'false').lower() in ('1', 'true', 'yes')
