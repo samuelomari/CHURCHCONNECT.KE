@@ -844,9 +844,18 @@ def create_asset():
 # -------------------------------------------------------------
 @app.route('/api/meetings', methods=['GET'])
 @login_required
-@roles_required('PASTOR', 'FIRST_ELDER', 'CHURCH_CLERK', 'AUDITOR', 'AUTHORIZED_ELDER_READONLY', 'DEPARTMENT_LEADER')
 def get_meetings():
-    conn = get_db_connection()
+    role = g.user['role']
+    permanent_roles = ['PASTOR', 'FIRST_ELDER', 'CHURCH_CLERK', 'AUDITOR', 'AUTHORIZED_ELDER_READONLY', 'DEPARTMENT_LEADER']
+    if role not in permanent_roles:
+        conn = get_db_connection()
+        grant = conn.execute('SELECT id FROM meeting_access_grants WHERE user_id = ?', (g.user['id'],)).fetchone()
+        conn.close()
+        if not grant:
+            return jsonify({'error': 'Access denied. Contact the Pastor to request board minutes access.'}), 403
+        conn = get_db_connection()
+    else:
+        conn = get_db_connection()
     meetings = conn.execute('''
         SELECT m.*, ch.full_name as chairperson_name, sec.full_name as secretary_name
         FROM meetings m
@@ -910,6 +919,75 @@ def create_meeting():
 
     create_audit_log(g.user['id'], 'RECORD_BOARD_MINUTES', 'Meeting', mtg_id, {'title': title, 'date': date})
     return jsonify({'id': mtg_id, 'title': title}), 201
+
+@app.route('/api/meetings/access-grants', methods=['GET'])
+@login_required
+@roles_required('PASTOR')
+def get_meeting_access_grants():
+    conn = get_db_connection()
+    grants = conn.execute('''
+        SELECT g.id, g.user_id, g.created_at, u.full_name, u.role, u.email,
+               gb.full_name as granted_by_name
+        FROM meeting_access_grants g
+        JOIN users u ON g.user_id = u.id
+        JOIN users gb ON g.granted_by_id = gb.id
+        ORDER BY u.full_name ASC
+    ''').fetchall()
+    conn.close()
+    return jsonify([dict(g) for g in grants])
+
+@app.route('/api/meetings/access-grants', methods=['POST'])
+@login_required
+@roles_required('PASTOR')
+def grant_meeting_access():
+    data = request.get_json() or {}
+    user_id = data.get('user_id', '').strip()
+    if not user_id:
+        return jsonify({'error': 'user_id is required'}), 400
+
+    conn = get_db_connection()
+    user = conn.execute('SELECT id, full_name, role FROM users WHERE id = ?', (user_id,)).fetchone()
+    if not user:
+        conn.close()
+        return jsonify({'error': 'User not found'}), 404
+
+    # Roles that already have permanent access don't need a grant
+    permanent_roles = ['PASTOR', 'FIRST_ELDER', 'CHURCH_CLERK', 'AUDITOR', 'AUTHORIZED_ELDER_READONLY', 'DEPARTMENT_LEADER']
+    if user['role'] in permanent_roles:
+        conn.close()
+        return jsonify({'error': f"{user['full_name']} already has permanent access via their {user['role']} role"}), 400
+
+    grant_id = 'mag-' + str(uuid.uuid4())[:8]
+    try:
+        conn.execute('INSERT INTO meeting_access_grants (id, user_id, granted_by_id) VALUES (?, ?, ?)',
+                     (grant_id, user_id, g.user['id']))
+        conn.commit()
+    except Exception:
+        conn.close()
+        return jsonify({'error': 'Access already granted to this user'}), 409
+    conn.close()
+
+    create_audit_log(g.user['id'], 'GRANT_MEETING_ACCESS', 'MeetingAccessGrant', grant_id,
+                     {'user': user['full_name'], 'role': user['role']})
+    return jsonify({'message': f"Board minutes access granted to {user['full_name']}"}), 201
+
+@app.route('/api/meetings/access-grants/<user_id>', methods=['DELETE'])
+@login_required
+@roles_required('PASTOR')
+def revoke_meeting_access(user_id):
+    conn = get_db_connection()
+    grant = conn.execute('SELECT g.id, u.full_name FROM meeting_access_grants g JOIN users u ON g.user_id = u.id WHERE g.user_id = ?', (user_id,)).fetchone()
+    if not grant:
+        conn.close()
+        return jsonify({'error': 'No access grant found for this user'}), 404
+
+    conn.execute('DELETE FROM meeting_access_grants WHERE user_id = ?', (user_id,))
+    conn.commit()
+    conn.close()
+
+    create_audit_log(g.user['id'], 'REVOKE_MEETING_ACCESS', 'MeetingAccessGrant', grant['id'],
+                     {'user': grant['full_name']})
+    return jsonify({'message': f"Board minutes access revoked for {grant['full_name']}"})
 
 # -------------------------------------------------------------
 # Database Disaster Recovery / Availability Backup

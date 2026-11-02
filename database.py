@@ -287,6 +287,16 @@ def init_db():
         FOREIGN KEY (assigned_officer_id) REFERENCES users(id)
     );
 
+    CREATE TABLE IF NOT EXISTS meeting_access_grants (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        granted_by_id TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+        FOREIGN KEY (granted_by_id) REFERENCES users(id),
+        UNIQUE(user_id)
+    );
+
     -- Payment Transactions (M-Pesa, Bank, Cheque tracking)
     CREATE TABLE IF NOT EXISTS payment_transactions (
         id TEXT PRIMARY KEY,

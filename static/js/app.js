@@ -11,7 +11,8 @@ const state = {
   fundCategories: [],
   members: [],
   departments: [],
-  chartInstance: null
+  chartInstance: null,
+  hasMeetingAccess: false
 };
 
 // Kenyan Shilling Formatter
@@ -179,6 +180,19 @@ const setupUserSession = async (user) => {
   document.getElementById('user-display-name').innerText = user.full_name;
   document.getElementById('user-display-role').innerText = user.role.replace('_', ' ');
 
+  // Check meeting access grant for non-permanent roles
+  const permanentMeetingRoles = ['PASTOR', 'FIRST_ELDER', 'CHURCH_CLERK', 'AUDITOR', 'AUTHORIZED_ELDER_READONLY', 'DEPARTMENT_LEADER'];
+  if (permanentMeetingRoles.includes(user.role)) {
+    state.hasMeetingAccess = true;
+  } else {
+    try {
+      await api('/api/meetings');
+      state.hasMeetingAccess = true;
+    } catch (_) {
+      state.hasMeetingAccess = false;
+    }
+  }
+
   // Render Role-Based Navigation
   renderNavigation(user.role);
 
@@ -299,10 +313,11 @@ const renderNavigation = (role) => {
         <span class="nav-icon"></span>
         <span>Assets & Inventory</span>
       </a>
+      ${state.hasMeetingAccess ? `
       <a class="nav-link" onclick="navigate('meetings')">
         <span class="nav-icon"></span>
         <span>Board Minutes & Resol.</span>
-      </a>
+      </a>` : ''}
       <a class="nav-link" onclick="navigate('events')">
         <span class="nav-icon"></span>
         <span>Events & Attendance</span>
@@ -1259,6 +1274,15 @@ const submitMember = async (e) => {
 // BOARD MINUTES & RESOLUTIONS
 // ==========================================
 const loadMeetings = async () => {
+  // Show manage access button for Pastor only
+  const manageBtn = document.getElementById('btn-manage-meeting-access');
+  if (manageBtn) manageBtn.style.display = state.currentUser?.role === 'PASTOR' ? 'inline-flex' : 'none';
+  // Hide record button for read-only granted users
+  const recordBtn = document.getElementById('btn-record-minutes');
+  if (recordBtn) {
+    const canRecord = ['PASTOR', 'FIRST_ELDER', 'CHURCH_CLERK'].includes(state.currentUser?.role);
+    recordBtn.style.display = canRecord ? 'inline-flex' : 'none';
+  }
   try {
     const meetings = await api('/api/meetings');
     const container = document.getElementById('meetings-container');
@@ -1407,6 +1431,72 @@ const submitMeeting = async (e) => {
     document.getElementById('form-meeting').reset();
     document.getElementById('mtg-resolutions-list').innerHTML = '';
     loadMeetings();
+  } catch (err) {}
+};
+
+const openMeetingAccessModal = async () => {
+  // Populate user dropdown with all users who don't have permanent access
+  const permanentRoles = ['PASTOR', 'FIRST_ELDER', 'CHURCH_CLERK', 'AUDITOR', 'AUTHORIZED_ELDER_READONLY', 'DEPARTMENT_LEADER'];
+  try {
+    const users = await api('/api/users');
+    const eligible = users.filter(u => !permanentRoles.includes(u.role));
+    const sel = document.getElementById('access-grant-user');
+    sel.innerHTML = '<option value="">-- Select Member --</option>' +
+      eligible.map(u => `<option value="${u.id}">${u.full_name} (${u.role.replace(/_/g,' ')})</option>`).join('');
+  } catch (_) {}
+  await refreshMeetingGrantsList();
+  openModal('modal-meeting-access');
+};
+
+const refreshMeetingGrantsList = async () => {
+  const container = document.getElementById('meeting-grants-list');
+  try {
+    const grants = await api('/api/meetings/access-grants');
+    if (grants.length === 0) {
+      container.innerHTML = '<p style="color:var(--text-muted);font-size:13px;">No custom access grants yet. Officers with permanent access (Elders, Clerk, Auditor) are not listed here.</p>';
+      return;
+    }
+    container.innerHTML = `
+      <table class="data-table">
+        <thead><tr><th>Name</th><th>Role</th><th>Granted By</th><th>Date</th><th>Action</th></tr></thead>
+        <tbody>
+          ${grants.map(g => `
+            <tr>
+              <td><strong>${g.full_name}</strong></td>
+              <td><span class="badge badge-info">${g.role.replace(/_/g,' ')}</span></td>
+              <td>${g.granted_by_name}</td>
+              <td style="font-size:11.5px;">${g.created_at.split(' ')[0]}</td>
+              <td><button class="btn btn-danger btn-sm" onclick="revokeMeetingAccess('${g.user_id}', '${g.full_name.replace(/'/g, '&#39;')}')">Revoke</button></td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    `;
+  } catch (_) {
+    container.innerHTML = '<p style="color:var(--danger);font-size:13px;">Failed to load grants.</p>';
+  }
+};
+
+const grantMeetingAccess = async () => {
+  const userId = document.getElementById('access-grant-user').value;
+  if (!userId) { showToast('Please select a user', 'warning'); return; }
+  try {
+    const res = await api('/api/meetings/access-grants', {
+      method: 'POST',
+      body: JSON.stringify({ user_id: userId })
+    });
+    showToast(res.message, 'success');
+    document.getElementById('access-grant-user').value = '';
+    await refreshMeetingGrantsList();
+  } catch (err) {}
+};
+
+const revokeMeetingAccess = async (userId, name) => {
+  if (!confirm(`Revoke board minutes access for ${name}?`)) return;
+  try {
+    const res = await api(`/api/meetings/access-grants/${userId}`, { method: 'DELETE' });
+    showToast(res.message, 'success');
+    await refreshMeetingGrantsList();
   } catch (err) {}
 };
 

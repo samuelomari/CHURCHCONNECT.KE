@@ -712,7 +712,10 @@
           <div class="panel-card">
             <div class="panel-card-header">
               <div class="panel-card-title">Church Board Minutes & Action Resolutions</div>
-              <button class="btn btn-primary btn-sm" onclick="openNewMeetingModal()">+ Record Minutes</button>
+              <div style="display:flex;gap:10px;">
+                <button class="btn btn-outline btn-sm" id="btn-manage-meeting-access" onclick="openMeetingAccessModal()" style="display:none;">Manage Access</button>
+                <button class="btn btn-primary btn-sm" id="btn-record-minutes" onclick="openNewMeetingModal()">+ Record Minutes</button>
+              </div>
             </div>
             <div class="panel-card-body" id="meetings-container">
               <!-- Injected via JS -->
@@ -1448,6 +1451,37 @@
       <div class="modal-footer">
         <button type="button" class="btn btn-outline" onclick="closeModal('modal-assign-role')">Cancel</button>
         <button type="button" class="btn btn-primary" onclick="executeRoleAssignment()">Save Role</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Meeting Access Management Modal (Pastor Only) -->
+  <div class="modal-overlay" id="modal-meeting-access">
+    <div class="modal-container" style="max-width: 600px;">
+      <div class="modal-header">
+        <h3 class="modal-title">Board Minutes Access Control</h3>
+        <button class="modal-close" onclick="closeModal('modal-meeting-access')">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p style="font-size:13px;color:var(--text-muted);margin-bottom:16px;">Grant or revoke access to board minutes for members who do not have it by default through their role.</p>
+        <div class="form-row" style="margin-bottom:16px;">
+          <div class="form-group">
+            <label class="form-label">Grant Access To</label>
+            <select id="access-grant-user" class="form-control">
+              <option value="">-- Select Member --</option>
+            </select>
+          </div>
+          <div class="form-group" style="display:flex;align-items:flex-end;">
+            <button type="button" class="btn btn-primary" style="width:100%;" onclick="grantMeetingAccess()">Grant Access</button>
+          </div>
+        </div>
+        <h4 style="font-size:13px;font-weight:600;color:var(--sda-blue-dark);margin-bottom:8px;">Currently Granted Access</h4>
+        <div id="meeting-grants-list">
+          <p style="color:var(--text-muted);font-size:13px;">Loading...</p>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline" onclick="closeModal('modal-meeting-access')">Close</button>
       </div>
     </div>
   </div>
