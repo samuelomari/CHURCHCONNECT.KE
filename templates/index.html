@@ -45,33 +45,13 @@
             Sign In to ChurchConnect
           </button>
 
-          <!-- Quick Persona Testing for Elders, Officers and Members -->
+          <!-- Quick Persona Testing -->
           <div class="quick-demo-accounts">
-            <div class="quick-demo-title">Quick Demo Sign-In (Select Persona):</div>
+            <div class="quick-demo-title">Quick Demo Sign-In:</div>
             <div class="demo-account-grid">
               <button type="button" class="demo-btn" onclick="quickFillLogin('pastor@churchconnect.ke', 'password123')">
                 <strong>Pr. David Ochieng</strong>
                 <span>Church Pastor</span>
-              </button>
-              <button type="button" class="demo-btn" onclick="quickFillLogin('elder.samuel@churchconnect.ke', 'password123')">
-                <strong>Elder Samuel Omari</strong>
-                <span>First Elder</span>
-              </button>
-              <button type="button" class="demo-btn" onclick="quickFillLogin('elder.joshua@churchconnect.ke', 'password123')">
-                <strong>Elder Joshua Mwiti</strong>
-                <span style="color: var(--sda-blue);">Authorized Elder (Read-Only)</span>
-              </button>
-              <button type="button" class="demo-btn" onclick="quickFillLogin('treasurer@churchconnect.ke', 'password123')">
-                <strong>Grace Wanjiku</strong>
-                <span>Head Treasurer</span>
-              </button>
-              <button type="button" class="demo-btn" onclick="quickFillLogin('clerk@churchconnect.ke', 'password123')">
-                <strong>Ruth Chebet</strong>
-                <span>Church Clerk</span>
-              </button>
-              <button type="button" class="demo-btn" style="border-color: var(--sda-gold);" onclick="quickFillLogin('john.k@gmail.com', 'password123')">
-                <strong>John Kariuki</strong>
-                <span style="color: var(--sda-gold-hover); font-weight: 600;">Church Member</span>
               </button>
             </div>
           </div>
@@ -158,7 +138,7 @@
           <p id="topbar-sub">Welcome to ChurchConnect Kenya</p>
         </div>
         <div class="topbar-actions" id="topbar-actions">
-          <button class="btn btn-outline btn-sm" onclick="handleLogout()">🔒 Logout</button>
+          <button class="btn btn-outline btn-sm" onclick="handleLogout()">Logout</button>
         </div>
       </header>
 
@@ -180,7 +160,7 @@
             <div class="stat-card gold">
               <div class="stat-card-title">
                 <span>My Tithe Returned</span>
-                <span>🪙</span>
+                <span></span>
               </div>
               <div class="stat-card-value" id="member-kpi-tithe">KES 0.00</div>
               <div class="stat-card-sub">Recorded under your member account</div>
@@ -189,7 +169,7 @@
             <div class="stat-card green">
               <div class="stat-card-title">
                 <span>My Total Offerings</span>
-                <span>📈</span>
+                <span></span>
               </div>
               <div class="stat-card-value" id="member-kpi-total">KES 0.00</div>
               <div class="stat-card-sub">Combined giving receipts</div>
@@ -198,7 +178,7 @@
             <div class="stat-card">
               <div class="stat-card-title">
                 <span>Church Congregation</span>
-                <span>👥</span>
+                <span></span>
               </div>
               <div class="stat-card-value" id="member-kpi-congregation">0</div>
               <div class="stat-card-sub">Active members in fellowship</div>
@@ -241,7 +221,7 @@
             <div class="stat-card gold">
               <div class="stat-card-title">
                 <span>Holy Tithe (Conference)</span>
-                <span>🪙</span>
+                <span></span>
               </div>
               <div class="stat-card-value" id="kpi-tithe">KES 0.00</div>
               <div class="stat-card-sub">100% remitted to Conference</div>
@@ -250,7 +230,7 @@
             <div class="stat-card">
               <div class="stat-card-title">
                 <span>Local Church Budget</span>
-                <span>⛪</span>
+                <span></span>
               </div>
               <div class="stat-card-value" id="kpi-local-budget">KES 0.00</div>
               <div class="stat-card-sub">Local operations & maintenance</div>
@@ -259,7 +239,7 @@
             <div class="stat-card amber">
               <div class="stat-card-title">
                 <span>Total Expenditure Paid</span>
-                <span>📤</span>
+                <span></span>
               </div>
               <div class="stat-card-value" id="kpi-expenses">KES 0.00</div>
               <div class="stat-card-sub">Authorized vouchers disbursed</div>
@@ -268,7 +248,7 @@
             <div class="stat-card green">
               <div class="stat-card-title">
                 <span>Net Local Church Balance</span>
-                <span>📈</span>
+                <span></span>
               </div>
               <div class="stat-card-value" id="kpi-net-reserve">KES 0.00</div>
               <div class="stat-card-sub">Operating cash reserve</div>
@@ -277,7 +257,7 @@
             <div class="stat-card">
               <div class="stat-card-title">
                 <span>Active Church Members</span>
-                <span>👥</span>
+                <span></span>
               </div>
               <div class="stat-card-value" id="kpi-members">0</div>
               <div class="stat-card-sub" id="kpi-depts">In 8 Church Departments</div>
@@ -462,7 +442,7 @@
           <div class="panel-card">
             <div class="panel-card-header">
               <div class="panel-card-title">My Tithe & Offering Giving Receipts</div>
-              <button class="btn btn-gold btn-sm" onclick="navigate('mpesa')">📱 Give via M-Pesa</button>
+              <button class="btn btn-gold btn-sm" onclick="navigate('mpesa')">Give via M-Pesa</button>
             </div>
             <div class="panel-card-body table-responsive" style="padding: 0;">
               <table class="data-table">
@@ -494,7 +474,7 @@
               <div class="panel-card-title">Tithe & Offering Envelope Register</div>
               <div style="display: flex; gap: 10px;">
                 <button class="btn btn-gold" id="btn-record-envelope" onclick="openNewEnvelopeModal()">+ Record New Envelope</button>
-                <button class="btn btn-outline" onclick="navigate('mpesa')">📱 M-Pesa Paybill</button>
+                <button class="btn btn-outline" onclick="navigate('mpesa')">M-Pesa Paybill</button>
               </div>
             </div>
             <div class="panel-card-body table-responsive" style="padding: 0;">
@@ -606,7 +586,7 @@
                     </div>
                   </div>
                   <button type="submit" class="btn btn-gold" style="width: 100%;">
-                    ⚡ Trigger Instant M-Pesa Payment Simulation
+                     Trigger Instant M-Pesa Payment Simulation
                   </button>
                 </form>
 
@@ -780,12 +760,38 @@
           <div class="panel-card">
             <div class="panel-card-header">
               <div class="panel-card-title">Seventh-day Adventist Local Church Monthly Treasury Statement</div>
-              <button class="btn btn-outline btn-sm" onclick="window.print()">🖨️ Print Statement</button>
+              <button class="btn btn-outline btn-sm" onclick="window.print()">Print Statement</button>
             </div>
             <div class="panel-card-body">
               <div id="statement-content" style="font-size: 13.5px; line-height: 1.6;">
                 <p>Generating monthly statement...</p>
               </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ========================================== -->
+        <!-- ROLE MANAGEMENT (PASTOR ONLY) -->
+        <!-- ========================================== -->
+        <section id="section-roles" class="app-section">
+          <div class="panel-card">
+            <div class="panel-card-header">
+              <div class="panel-card-title">Assign Church Roles to Members</div>
+              <span class="badge badge-warning">Pastor Only</span>
+            </div>
+            <div class="panel-card-body table-responsive" style="padding: 0;">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Full Name</th>
+                    <th>Email</th>
+                    <th>Current Role</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody id="table-roles-body">
+                </tbody>
+              </table>
             </div>
           </div>
         </section>
@@ -798,7 +804,7 @@
             <div class="panel-card-header">
               <div class="panel-card-title">Immutable Church System Audit Trail</div>
               <div style="display: flex; gap: 8px;">
-                <button class="btn btn-outline btn-sm" onclick="downloadDisasterRecoveryBackup()">💾 Backup Database</button>
+                <button class="btn btn-outline btn-sm" onclick="downloadDisasterRecoveryBackup()">Backup Database</button>
                 <span class="badge badge-info">Financial & Admin Transparency</span>
               </div>
             </div>
@@ -842,7 +848,7 @@
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-outline" onclick="closeModal('modal-view-receipt')">Close</button>
-        <button type="button" class="btn btn-primary" onclick="window.print()">🖨️ Print Receipt</button>
+        <button type="button" class="btn btn-primary" onclick="window.print()">Print Receipt</button>
       </div>
     </div>
   </div>
@@ -1379,6 +1385,37 @@
           <button type="submit" class="btn btn-gold">Save Attendance</button>
         </div>
       </form>
+    </div>
+  </div>
+
+  <!-- Assign Role Modal -->
+  <div class="modal-overlay" id="modal-assign-role">
+    <div class="modal-container" style="max-width: 420px;">
+      <div class="modal-header">
+        <h3 class="modal-title">Assign Church Role</h3>
+        <button class="modal-close" onclick="closeModal('modal-assign-role')">&times;</button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="role-user-id">
+        <p id="role-user-summary" style="font-size: 13.5px; margin-bottom: 14px;"></p>
+        <div class="form-group">
+          <label class="form-label">Assign Role</label>
+          <select id="role-select" class="form-control">
+            <option value="MEMBER">Member (No officer access)</option>
+            <option value="FIRST_ELDER">First Elder</option>
+            <option value="HEAD_TREASURER">Head Treasurer</option>
+            <option value="ASSISTANT_TREASURER">Assistant Treasurer</option>
+            <option value="CHURCH_CLERK">Church Clerk</option>
+            <option value="DEPARTMENT_LEADER">Department Leader</option>
+            <option value="AUDITOR">Auditor</option>
+            <option value="AUTHORIZED_ELDER_READONLY">Authorized Elder (Read-Only)</option>
+          </select>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline" onclick="closeModal('modal-assign-role')">Cancel</button>
+        <button type="button" class="btn btn-primary" onclick="executeRoleAssignment()">Save Role</button>
+      </div>
     </div>
   </div>
 

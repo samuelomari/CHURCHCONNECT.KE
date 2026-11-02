@@ -209,35 +209,35 @@ const renderNavigation = (role) => {
     navContainer.innerHTML = `
       <div class="nav-section-title">Member Portal</div>
       <a class="nav-link active" onclick="navigate('member-dashboard')">
-        <span class="nav-icon">🏠</span>
+        <span class="nav-icon"></span>
         <span>My Home</span>
       </a>
       <a class="nav-link" onclick="navigate('announcements')">
-        <span class="nav-icon">📢</span>
+        <span class="nav-icon"></span>
         <span>Announcements</span>
       </a>
       <a class="nav-link" onclick="navigate('events')">
-        <span class="nav-icon">📅</span>
+        <span class="nav-icon"></span>
         <span>Church Calendar</span>
       </a>
 
       <div class="nav-section-title">Stewardship & Giving</div>
       <a class="nav-link" onclick="navigate('my-giving')">
-        <span class="nav-icon">🪙</span>
+        <span class="nav-icon"></span>
         <span>My Giving Receipts</span>
       </a>
       <a class="nav-link" onclick="navigate('mpesa')">
-        <span class="nav-icon">📱</span>
+        <span class="nav-icon"></span>
         <span>Give via M-Pesa</span>
       </a>
 
       <div class="nav-section-title">Fellowship</div>
       <a class="nav-link" onclick="navigate('departments')">
-        <span class="nav-icon">🏛️</span>
+        <span class="nav-icon"></span>
         <span>Church Ministries</span>
       </a>
       <a class="nav-link" onclick="navigate('members')">
-        <span class="nav-icon">👥</span>
+        <span class="nav-icon"></span>
         <span>Member Directory</span>
       </a>
     `;
@@ -265,66 +265,71 @@ const renderNavigation = (role) => {
     navContainer.innerHTML = `
       <div class="nav-section-title">Core Management</div>
       <a class="nav-link active" onclick="navigate('dashboard')">
-        <span class="nav-icon">📊</span>
+        <span class="nav-icon"></span>
         <span>Executive Dashboard</span>
       </a>
       <a class="nav-link" onclick="navigate('treasury')">
-        <span class="nav-icon">🪙</span>
+        <span class="nav-icon"></span>
         <span>Treasury & Giving</span>
       </a>
       <a class="nav-link" onclick="navigate('vouchers')">
-        <span class="nav-icon">📝</span>
+        <span class="nav-icon"></span>
         <span>Vouchers & Requisitions</span>
         <span class="nav-badge" id="badge-pending-vouchers" style="display: none;">0</span>
       </a>
       <a class="nav-link" onclick="navigate('mpesa')">
-        <span class="nav-icon">📱</span>
+        <span class="nav-icon"></span>
         <span>M-Pesa Daraja Hub</span>
       </a>
 
       <div class="nav-section-title">Administration</div>
       <a class="nav-link" onclick="navigate('announcements')">
-        <span class="nav-icon">📢</span>
+        <span class="nav-icon"></span>
         <span>Announcements</span>
       </a>
       <a class="nav-link" onclick="navigate('members')">
-        <span class="nav-icon">👥</span>
+        <span class="nav-icon"></span>
         <span>Member Directory</span>
       </a>
       <a class="nav-link" onclick="navigate('departments')">
-        <span class="nav-icon">🏛️</span>
+        <span class="nav-icon"></span>
         <span>Departments & Budgets</span>
       </a>
       <a class="nav-link" onclick="navigate('assets')">
-        <span class="nav-icon">📦</span>
+        <span class="nav-icon"></span>
         <span>Assets & Inventory</span>
       </a>
       <a class="nav-link" onclick="navigate('meetings')">
-        <span class="nav-icon">📜</span>
+        <span class="nav-icon"></span>
         <span>Board Minutes & Resol.</span>
       </a>
       <a class="nav-link" onclick="navigate('events')">
-        <span class="nav-icon">📅</span>
+        <span class="nav-icon"></span>
         <span>Events & Attendance</span>
       </a>
 
       <div class="nav-section-title">Accountability & Governance</div>
       <a class="nav-link" onclick="navigate('accountability')">
-        <span class="nav-icon">⚖️</span>
+        <span class="nav-icon"></span>
         <span>Accountability Centre</span>
       </a>
       <a class="nav-link" onclick="navigate('reports')">
-        <span class="nav-icon">📑</span>
+        <span class="nav-icon"></span>
         <span>SDA Monthly Statement</span>
       </a>
       <a class="nav-link" onclick="navigate('audit')">
-        <span class="nav-icon">🔒</span>
+        <span class="nav-icon"></span>
         <span>Audit Trail</span>
       </a>
       ${['CHURCH_ADMIN', 'PASTOR', 'FIRST_ELDER'].includes(role) ? `
       <a class="nav-link" onclick="downloadDisasterRecoveryBackup()">
-        <span class="nav-icon">💾</span>
+        <span class="nav-icon"></span>
         <span>Download DB Backup</span>
+      </a>` : ''}
+      ${role === 'PASTOR' ? `
+      <a class="nav-link" onclick="navigate('roles')">
+        <span class="nav-icon"></span>
+        <span>Manage Member Roles</span>
       </a>` : ''}
     `;
 
@@ -382,6 +387,7 @@ const navigate = (sectionId) => {
     'events': { title: 'Events & Attendance', sub: 'Church calendar, programmes, and Sabbath attendance logs' },
     'accountability': { title: 'Church Accountability Centre', sub: 'Financial governance oversight, recording attribution, and threshold alerts' },
     'reports': { title: 'SDA Monthly Financial Statement', sub: 'Conference trust remittance calculation and local church balance sheet' },
+    'roles': { title: 'Manage Member Roles', sub: 'Assign church officer roles to registered members' },
     'audit': { title: 'Audit Trail', sub: 'Immutable log of administrative and financial activities' }
   };
 
@@ -407,6 +413,7 @@ const loadSectionData = async (sectionId) => {
   else if (sectionId === 'events') loadEvents();
   else if (sectionId === 'accountability') loadAccountabilityCenter();
   else if (sectionId === 'reports') loadSdaMonthlyReport();
+  else if (sectionId === 'roles') loadRoleManagement();
   else if (sectionId === 'audit') loadAuditLogs();
 };
 
@@ -497,7 +504,7 @@ const loadMemberDashboard = async () => {
         <div style="border-bottom: 1px solid var(--border); padding: 10px 0; font-size: 13px;">
           <div style="font-weight: 600; color: var(--sda-blue-dark);">${ev.title}</div>
           <div style="font-size: 11.5px; color: var(--text-muted); margin-top: 3px;">
-            📍 ${ev.location} | 🕒 ${ev.start_date.split(' ')[0]}
+             ${ev.location} |  ${ev.start_date.split(' ')[0]}
           </div>
         </div>
       `).join('');
@@ -527,7 +534,7 @@ const loadAnnouncements = async () => {
       <div class="announcement-card ${a.is_pinned ? 'pinned' : ''}">
         <div class="announcement-header">
           <span class="announcement-title">
-            ${a.is_pinned ? '📌 ' : ''}${a.title}
+            ${a.is_pinned ? ' ' : ''}${a.title}
           </span>
           <span class="badge ${a.category === 'SABBATH_SERVICE' ? 'badge-success' : 'badge-info'}">
             ${a.category.replace('_', ' ')}
@@ -590,7 +597,7 @@ const loadMyGiving = async () => {
           <td style="font-size: 11.5px; color: var(--text-muted);">${breakdown || '-'}</td>
           <td><strong style="color: var(--sda-blue);">${formatKES(e.total_amount)}</strong></td>
           <td>
-            <button class="btn btn-outline btn-sm" onclick="openReceiptModal('${e.receipt_number}')">🧾 View Receipt</button>
+            <button class="btn btn-outline btn-sm" onclick="openReceiptModal('${e.receipt_number}')"> View Receipt</button>
           </td>
         </tr>
       `;
@@ -669,7 +676,7 @@ const loadDashboard = async () => {
       evtContainer.innerHTML = data.upcoming_events.map(ev => `
         <div style="border-bottom: 1px solid var(--border); padding: 10px 0; font-size: 13px;">
           <div style="font-weight: 600; color: var(--sda-blue-dark);">${ev.title}</div>
-          <div style="font-size: 11.5px; color: var(--text-muted);">📍 ${ev.location} | 🕒 ${ev.start_date.split(' ')[0]}</div>
+          <div style="font-size: 11.5px; color: var(--text-muted);"> ${ev.location} |  ${ev.start_date.split(' ')[0]}</div>
         </div>
       `).join('');
     } else {
@@ -917,8 +924,8 @@ const loadVouchers = async () => {
           <td><strong>${formatKES(v.amount)}</strong></td>
           <td><span class="badge ${badgeClass}">${v.status.replace('_', ' ')}</span></td>
           <td style="font-size: 11.5px;">
-            ${v.treasurer_name ? `✓ Tre: ${v.treasurer_name}<br>` : ''}
-            ${v.elder_name ? `✓ Eld: ${v.elder_name}` : ''}
+            ${v.treasurer_name ? ` Tre: ${v.treasurer_name}<br>` : ''}
+            ${v.elder_name ? ` Eld: ${v.elder_name}` : ''}
             ${!v.treasurer_name && !v.elder_name ? 'Initial Submission' : ''}
           </td>
           <td>${actionBtn}</td>
@@ -1233,7 +1240,7 @@ const loadDepartments = async () => {
         <div class="stat-card">
           <div class="stat-card-title">
             <span>${d.name} (${d.code})</span>
-            <span>🏛️</span>
+            <span></span>
           </div>
           <div style="font-size: 11.5px; color: var(--text-muted); margin-bottom: 8px;">
             Leader: <strong>${d.leader_name || 'Unassigned'}</strong>
@@ -1465,6 +1472,56 @@ const loadAuditLogs = async () => {
         <td style="font-size: 11.5px; color: var(--text-muted); max-width: 250px; word-break: break-all;">${l.details || '-'}</td>
       </tr>
     `).join('');
+  } catch (err) {}
+};
+
+// ==========================================
+// ROLE MANAGEMENT (PASTOR ONLY)
+// ==========================================
+const loadRoleManagement = async () => {
+  try {
+    const users = await api('/api/users');
+    const tbody = document.getElementById('table-roles-body');
+    if (!tbody) return;
+
+    if (users.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--text-muted);padding:24px;">No registered users found.</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = users.map(u => `
+      <tr>
+        <td><strong>${u.full_name}</strong></td>
+        <td>${u.email}</td>
+        <td><span class="badge badge-info">${u.role.replace(/_/g, ' ')}</span></td>
+        <td>
+          <button class="btn btn-outline btn-sm" onclick="openAssignRoleModal('${u.id}', '${u.full_name}', '${u.role}')">
+            Change Role
+          </button>
+        </td>
+      </tr>
+    `).join('');
+  } catch (err) {}
+};
+
+const openAssignRoleModal = (userId, name, currentRole) => {
+  document.getElementById('role-user-id').value = userId;
+  document.getElementById('role-user-summary').innerHTML = `Assigning role for: <strong>${name}</strong><br>Current role: <span class="badge badge-info">${currentRole.replace(/_/g, ' ')}</span>`;
+  document.getElementById('role-select').value = currentRole;
+  openModal('modal-assign-role');
+};
+
+const executeRoleAssignment = async () => {
+  const userId = document.getElementById('role-user-id').value;
+  const role = document.getElementById('role-select').value;
+  try {
+    const res = await api(`/api/users/${userId}/role`, {
+      method: 'PATCH',
+      body: JSON.stringify({ role })
+    });
+    showToast(res.message, 'success');
+    closeModal('modal-assign-role');
+    loadRoleManagement();
   } catch (err) {}
 };
 

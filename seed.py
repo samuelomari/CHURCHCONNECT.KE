@@ -25,15 +25,7 @@ def seed_database():
     pw = hash_password("password123")
     
     users = [
-        {"id": "usr-admin", "email": "admin@churchconnect.ke", "name": "System Administrator", "phone": "254700000001", "role": "CHURCH_ADMIN", "tfa": 1},
         {"id": "usr-pastor", "email": "pastor@churchconnect.ke", "name": "Pr. David Ochieng", "phone": "254711000002", "role": "PASTOR", "tfa": 1},
-        {"id": "usr-elder", "email": "elder.samuel@churchconnect.ke", "name": "Elder Samuel Omari", "phone": "254722000003", "role": "FIRST_ELDER", "tfa": 1},
-        {"id": "usr-elder-ro", "email": "elder.joshua@churchconnect.ke", "name": "Elder Joshua Mwiti", "phone": "254722000099", "role": "AUTHORIZED_ELDER_READONLY", "tfa": 0},
-        {"id": "usr-treasurer", "email": "treasurer@churchconnect.ke", "name": "Grace Wanjiku", "phone": "254733000004", "role": "HEAD_TREASURER", "tfa": 1},
-        {"id": "usr-asst-treasurer", "email": "asst.treasurer@churchconnect.ke", "name": "Brian Kiprop", "phone": "254744000005", "role": "ASSISTANT_TREASURER", "tfa": 0},
-        {"id": "usr-clerk", "email": "clerk@churchconnect.ke", "name": "Ruth Chebet", "phone": "254755000006", "role": "CHURCH_CLERK", "tfa": 0},
-        {"id": "usr-youth-lead", "email": "youth.leader@churchconnect.ke", "name": "Kevin Mwangi", "phone": "254766000007", "role": "DEPARTMENT_LEADER", "tfa": 0},
-        {"id": "usr-auditor", "email": "auditor@churchconnect.ke", "name": "Silas Mutua", "phone": "254777000008", "role": "AUDITOR", "tfa": 1},
     ]
 
     for u in users:
@@ -44,7 +36,7 @@ def seed_database():
 
     # 2. Departments
     departments = [
-        {"id": "dept-ay", "name": "Adventist Youth (AY)", "code": "AY", "desc": "Youth ministries, camporees and outreach", "leader_id": "usr-youth-lead", "budget": 120000.0, "spent": 45000.0},
+        {"id": "dept-ay", "name": "Adventist Youth (AY)", "code": "AY", "desc": "Youth ministries, camporees and outreach", "leader_id": None, "budget": 120000.0, "spent": 45000.0},
         {"id": "dept-ss", "name": "Sabbath School & Personal Ministries", "code": "SSPM", "desc": "Lesson study and community soul winning", "leader_id": None, "budget": 90000.0, "spent": 30000.0},
         {"id": "dept-wm", "name": "Women's Ministries", "code": "WM", "desc": "Dorcas society and women nurture", "leader_id": None, "budget": 80000.0, "spent": 15000.0},
         {"id": "dept-amo", "name": "Adventist Men's Organization", "code": "AMO", "desc": "Men fellowship and mentorship", "leader_id": None, "budget": 75000.0, "spent": 12000.0},
@@ -60,7 +52,6 @@ def seed_database():
             VALUES (?, ?, ?, ?, ?, ?, ?)
         ''', (d["id"], d["name"], d["code"], d["desc"], d["leader_id"], d["budget"], d["spent"]))
 
-    cursor.execute("UPDATE users SET department_id = 'dept-ay' WHERE id = 'usr-youth-lead'")
 
     # 3. Fund Categories (SDA Sacred Trust Partitioning)
     fund_categories = [
@@ -140,7 +131,7 @@ def seed_database():
             INSERT INTO tithe_offering_envelopes (
                 id, receipt_number, verification_code, member_id, donor_name, donor_phone,
                 payment_method, payment_status, mpesa_receipt_number, transaction_date, total_amount, status, recorded_by_id
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'CONFIRMED', 'usr-treasurer')
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'CONFIRMED', 'usr-pastor')
         ''', (env["id"], env["rec"], v_code, env["mem"], env["name"], env["phone"], env["method"], env["p_status"], env["mpesa"], env["date"], env["total"]))
 
         for cat_id, amt in env["items"]:
@@ -157,8 +148,6 @@ def seed_database():
 
     committee_members = [
         ("usr-pastor", "CHAIR"),
-        ("usr-elder", "SECRETARY"),
-        ("usr-auditor", "MEMBER"),
     ]
     for uid, r in committee_members:
         cursor.execute('''
@@ -174,32 +163,11 @@ def seed_database():
     # 7. Expenditure Vouchers
     vouchers = [
         {
-            "id": "vou-001", "num": "VOU-2026-0001", "title": "Sound System Hire for Youth Rally",
-            "desc": "High quality PA microphones and speakers hired for the joint Eastern Youth Rally at Central grounds",
-            "dept": "dept-ay", "req_by": "usr-youth-lead", "amt": 25000.0, "payee": "Nairobi Sound & Events Ltd", "payee_phone": "254712000999",
-            "status": "PAID", "t_rev": "usr-treasurer", "t_notes": "Budget confirmed within AY allocation.",
-            "e_app": "usr-elder", "e_notes": "Approved by Church Board action minute 44/2026.", "method": "MPESA", "ref": "MP-B2C-554433", "paid_at": "2026-10-15 14:00:00"
-        },
-        {
-            "id": "vou-002", "num": "VOU-2026-0002", "title": "Purchase of Adult & Children Bible Lesson Quarterlies",
+            "id": "vou-001", "num": "VOU-2026-0001", "title": "Purchase of Adult & Children Bible Lesson Quarterlies",
             "desc": "Quarter 4 Adult Sabbath School and Kindergarten teacher guides from Africa Herald Publishing House",
             "dept": "dept-ss", "req_by": "usr-pastor", "amt": 30000.0, "payee": "Africa Herald Publishing House", "payee_phone": "254722555666",
-            "status": "PAID", "t_rev": "usr-treasurer", "t_notes": "Invoice verified against delivery note.",
-            "e_app": "usr-pastor", "e_notes": "Crucial spiritual material approved.", "method": "BANK_TRANSFER", "ref": "EFT-883344", "paid_at": "2026-10-18 10:30:00"
-        },
-        {
-            "id": "vou-003", "num": "VOU-2026-0003", "title": "Emergency Medical Benevolent Assistance",
-            "desc": "Hospital bill clearance support for senior member admitted at Kenyatta National Hospital",
-            "dept": "dept-welfare", "req_by": "usr-pastor", "amt": 20000.0, "payee": "Kenyatta National Hospital", "payee_phone": "254722000000",
-            "status": "TREASURER_REVIEWED", "t_rev": "usr-treasurer", "t_notes": "Sufficient welfare reserve available.",
-            "e_app": None, "e_notes": None, "method": "MPESA", "ref": None, "paid_at": None
-        },
-        {
-            "id": "vou-004", "num": "VOU-2026-0004", "title": "Youth Mission Evangelism Camp Logistics",
-            "desc": "Tents hire, clean drinking water, and outreach Bibles for Machakos rural mission",
-            "dept": "dept-ay", "req_by": "usr-youth-lead", "amt": 20000.0, "payee": "Machakos Camp Supplies", "payee_phone": "254733444555",
             "status": "SUBMITTED", "t_rev": None, "t_notes": None,
-            "e_app": None, "e_notes": None, "method": "MPESA", "ref": None, "paid_at": None
+            "e_app": None, "e_notes": None, "method": "BANK_TRANSFER", "ref": None, "paid_at": None
         },
     ]
 
@@ -219,23 +187,14 @@ def seed_database():
             v["method"], v["ref"], v["paid_at"]
         ))
 
-    # Committee votes for voucher 001
-    cursor.execute('''
-        INSERT INTO approval_decisions (id, voucher_id, user_id, decision, notes)
-        VALUES (?, 'vou-001', 'usr-elder', 'APPROVE', 'Authorized on behalf of church board.')
-    ''', (str(uuid.uuid4()),))
-    cursor.execute('''
-        INSERT INTO approval_decisions (id, voucher_id, user_id, decision, notes)
-        VALUES (?, 'vou-001', 'usr-pastor', 'APPROVE', 'Pastoral consent granted.')
-    ''', (str(uuid.uuid4()),))
 
     # 8. Church Property & Asset Inventory
     assets = [
-        {"tag": "AST-2024-001", "name": "Soundcraft 24-Channel Audio Mixer", "cat": "SOUND_EQUIPMENT", "qty": 1, "loc": "PA Booth", "cond": "EXCELLENT", "cust": "usr-youth-lead", "cost": 145000.0},
-        {"tag": "AST-2024-002", "name": "Shure Wireless Vocal Microphones (Set of 4)", "cat": "SOUND_EQUIPMENT", "qty": 4, "loc": "PA Booth", "cond": "GOOD", "cust": "usr-youth-lead", "cost": 72000.0},
+        {"tag": "AST-2024-001", "name": "Soundcraft 24-Channel Audio Mixer", "cat": "SOUND_EQUIPMENT", "qty": 1, "loc": "PA Booth", "cond": "EXCELLENT", "cust": "usr-pastor", "cost": 145000.0},
+        {"tag": "AST-2024-002", "name": "Shure Wireless Vocal Microphones (Set of 4)", "cat": "SOUND_EQUIPMENT", "qty": 4, "loc": "PA Booth", "cond": "GOOD", "cust": "usr-pastor", "cost": 72000.0},
         {"tag": "AST-2023-010", "name": "Yamaha Clavinova Digital Stage Piano", "cat": "INSTRUMENT", "qty": 1, "loc": "Sanctuary Podium", "cond": "EXCELLENT", "cust": "usr-pastor", "cost": 180000.0},
-        {"tag": "AST-2023-015", "name": "Epson 4000 Lumens Full HD Projector", "cat": "SANCTUARY", "qty": 2, "loc": "Main Sanctuary", "cond": "GOOD", "cust": "usr-elder", "cost": 115000.0},
-        {"tag": "AST-2022-040", "name": "Hardwood Church Sanctuary Pews", "cat": "FURNITURE", "qty": 65, "loc": "Main Sanctuary", "cond": "GOOD", "cust": "usr-elder", "cost": 650000.0},
+        {"tag": "AST-2023-015", "name": "Epson 4000 Lumens Full HD Projector", "cat": "SANCTUARY", "qty": 2, "loc": "Main Sanctuary", "cond": "GOOD", "cust": "usr-pastor", "cost": 115000.0},
+        {"tag": "AST-2022-040", "name": "Hardwood Church Sanctuary Pews", "cat": "FURNITURE", "qty": 65, "loc": "Main Sanctuary", "cond": "GOOD", "cust": "usr-pastor", "cost": 650000.0},
     ]
 
     for a in assets:
@@ -248,14 +207,13 @@ def seed_database():
     meeting_id = 'mtg-2026-q4'
     cursor.execute('''
         INSERT INTO meetings (id, title, meeting_type, date, chairperson_id, secretary_id, minutes_text)
-        VALUES (?, 'Q4 Church Board & Finance Council', 'CHURCH_BOARD', '2026-10-10', 'usr-pastor', 'usr-clerk',
-        'Meeting opened with prayer by Elder Samuel Omari. Financial report was received from Head Treasurer Grace Wanjiku. Agreed to maintain 100% sacred trust remittance to the Central Kenya Conference and approved youth rally requisitions.')
+        VALUES (?, 'Q4 Church Board & Finance Council', 'CHURCH_BOARD', '2026-10-10', 'usr-pastor', 'usr-pastor',
+        'Meeting opened with prayer by Pr. David Ochieng. Financial report was received and reviewed. Agreed to maintain 100% sacred trust remittance to the Central Kenya Conference.')
     ''', (meeting_id,))
 
     resolutions = [
-        {"num": "RES-2026-044", "title": "Youth Rally Sound Logistics Approval", "desc": "Authorize expenditure of up to KES 25,000 from AY department budget for sound hire.", "officer": "usr-youth-lead", "status": "COMPLETED"},
-        {"num": "RES-2026-045", "title": "Quarterly Trust Remittance Audit", "desc": "Auditor Silas Mutua to verify Q4 Tithe remittance receipt against Conference bank slip.", "officer": "usr-auditor", "status": "IN_PROGRESS"},
-        {"num": "RES-2026-046", "title": "Sanctuary Roof Water Harvesting", "desc": "Deaconry to solicit 3 quotations for gutter repair and water tanks before the November rains.", "officer": "usr-elder", "status": "PENDING"},
+        {"num": "RES-2026-044", "title": "Quarterly Trust Remittance Audit", "desc": "Verify Q4 Tithe remittance receipt against Conference bank slip.", "officer": "usr-pastor", "status": "IN_PROGRESS"},
+        {"num": "RES-2026-045", "title": "Sanctuary Roof Water Harvesting", "desc": "Deaconry to solicit 3 quotations for gutter repair and water tanks before the November rains.", "officer": "usr-pastor", "status": "PENDING"},
     ]
 
     for r in resolutions:
@@ -267,8 +225,8 @@ def seed_database():
     # 10. Announcements
     announcements = [
         {"id": "ann-01", "title": "Quarterly Fellowship Sabbath & Communion Ordinance", "content": "All church members, visitors, and families are warmly invited to our Holy Communion service and fellowship lunch this coming Sabbath. Sabbath School begins promptly at 9:00 AM, followed by Divine Service at 10:45 AM.", "category": "SABBATH_SERVICE", "audience": "ALL", "pinned": 1, "author": "usr-pastor"},
-        {"id": "ann-02", "title": "Adventist Youth (AY) Camporee Registration Open", "content": "Registration for the Central Kenya Conference Annual Youth Camporee in Narok is now officially open! Cost is KES 2,500 per youth covering transport, lodging, and materials. Contact Kevin Mwangi (AY Leader).", "category": "YOUTH", "audience": "ALL", "pinned": 1, "author": "usr-youth-lead"},
-        {"id": "ann-03", "title": "Community Dorcas Welfare Food Drive", "content": "The Women's Ministries and Deaconry departments are collecting dry food items (rice, flour, cooking oil) and warm clothes for needy families in our neighbourhood. Drop donations with the Head Deacon.", "category": "GENERAL", "audience": "ALL", "pinned": 0, "author": "usr-elder"},
+        {"id": "ann-02", "title": "Adventist Youth (AY) Camporee Registration Open", "content": "Registration for the Central Kenya Conference Annual Youth Camporee in Narok is now officially open! Cost is KES 2,500 per youth covering transport, lodging, and materials. Contact the church office.", "category": "YOUTH", "audience": "ALL", "pinned": 1, "author": "usr-pastor"},
+        {"id": "ann-03", "title": "Community Dorcas Welfare Food Drive", "content": "The Women's Ministries and Deaconry departments are collecting dry food items (rice, flour, cooking oil) and warm clothes for needy families in our neighbourhood. Drop donations with the Head Deacon.", "category": "GENERAL", "audience": "ALL", "pinned": 0, "author": "usr-pastor"},
         {"id": "ann-04", "title": "Weekly Wednesday Prayer & Bible Study", "content": "Join us every Wednesday from 5:30 PM to 7:00 PM in the church sanctuary and online on Zoom for prayer, intercession, and practical study of the book of Daniel.", "category": "PRAYER_REQUEST", "audience": "ALL", "pinned": 0, "author": "usr-pastor"}
     ]
 
@@ -301,15 +259,12 @@ def seed_database():
     for att in attendances:
         cursor.execute('''
             INSERT INTO attendance (id, service_type, date, adult_count, children_count, visitors_count, total_count, recorded_by_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, 'usr-clerk')
+            VALUES (?, ?, ?, ?, ?, ?, ?, 'usr-pastor')
         ''', (str(uuid.uuid4()), att["type"], att["date"], att["a"], att["c"], att["v"], att["tot"]))
 
     # 13. Audit Logs
     audit_entries = [
         ("usr-pastor", "LOGIN", "User", "usr-pastor", '{"action": "2FA Authenticated Login"}', "127.0.0.1"),
-        ("usr-treasurer", "RECORD_OFFERING", "TitheOfferingEnvelope", "env-003", '{"amount": 25000, "receipt": "CCK-2026-00003"}', "127.0.0.1"),
-        ("usr-elder", "COMMITTEE_VOTE", "ExpenditureVoucher", "vou-001", '{"decision": "APPROVE", "role": "CHURCH_BOARD"}', "127.0.0.1"),
-        ("usr-treasurer", "DISBURSE_PAYMENT", "ExpenditureVoucher", "vou-001", '{"reference": "MP-B2C-554433"}', "127.0.0.1"),
     ]
 
     for uid, act, ent, ent_id, det, ip in audit_entries:

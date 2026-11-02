@@ -1393,6 +1393,48 @@ def get_dashboard_overview():
         'announcements': [dict(a) for a in recent_announcements]
     })
 
+@app.route('/api/users', methods=['GET'])
+@login_required
+@roles_required('PASTOR')
+def get_all_users():
+    conn = get_db_connection()
+    users = conn.execute('''
+        SELECT id, email, full_name, role, phone, active FROM users
+        WHERE role != 'PASTOR'
+        ORDER BY full_name ASC
+    ''').fetchall()
+    conn.close()
+    return jsonify([dict(u) for u in users])
+
+@app.route('/api/users/<user_id>/role', methods=['PATCH'])
+@login_required
+@roles_required('PASTOR')
+def assign_user_role(user_id):
+    data = request.get_json() or {}
+    new_role = data.get('role', '').strip()
+
+    allowed_roles = ['MEMBER', 'FIRST_ELDER', 'HEAD_TREASURER', 'ASSISTANT_TREASURER',
+                     'CHURCH_CLERK', 'DEPARTMENT_LEADER', 'AUDITOR', 'AUTHORIZED_ELDER_READONLY']
+    if new_role not in allowed_roles:
+        return jsonify({'error': 'Invalid role specified'}), 400
+
+    conn = get_db_connection()
+    user = conn.execute('SELECT id, full_name, role FROM users WHERE id = ?', (user_id,)).fetchone()
+    if not user:
+        conn.close()
+        return jsonify({'error': 'User not found'}), 404
+
+    conn.execute('UPDATE users SET role = ? WHERE id = ?', (new_role, user_id))
+    conn.commit()
+    conn.close()
+
+    create_audit_log(g.user['id'], 'ASSIGN_ROLE', 'User', user_id, {
+        'target_user': user['full_name'],
+        'old_role': user['role'],
+        'new_role': new_role
+    })
+    return jsonify({'message': f"Role updated to {new_role} for {user['full_name']}", 'role': new_role})
+
 @app.route('/api/audit-logs', methods=['GET'])
 @login_required
 @roles_required('PASTOR', 'FIRST_ELDER', 'HEAD_TREASURER', 'AUDITOR', 'CHURCH_ADMIN', 'AUTHORIZED_ELDER_READONLY')
