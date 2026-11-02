@@ -1,0 +1,1388 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ChurchConnect Kenya — Church Management & Financial Accountability</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+
+  <!-- ========================================== -->
+  <!-- 1. MANDATORY AUTHENTICATION VIEW -->
+  <!-- ========================================== -->
+  <div id="auth-view">
+    <div class="auth-card">
+      <div class="auth-header">
+        <div class="auth-logo">✝</div>
+        <h1>ChurchConnect Kenya</h1>
+        <p>Seventh-day Adventist Church Management System</p>
+      </div>
+
+      <div class="auth-tabs">
+        <button class="auth-tab-btn active" id="tab-btn-login" onclick="toggleAuthTab('login')">Sign In</button>
+        <button class="auth-tab-btn" id="tab-btn-register" onclick="toggleAuthTab('register')">Register as Member</button>
+      </div>
+
+      <div class="auth-body">
+        <!-- Sign In Form -->
+        <form id="form-login" class="auth-form active" onsubmit="handleLoginSubmit(event)">
+          <div class="form-group">
+            <label class="form-label">Email Address</label>
+            <input type="email" id="login-email" class="form-control" placeholder="name@domain.ke" required autocomplete="email">
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Password</label>
+            <input type="password" id="login-password" class="form-control" placeholder="Enter your password" required autocomplete="current-password">
+          </div>
+
+          <button type="submit" class="btn btn-primary" style="width: 100%; padding: 12px; margin-top: 6px;">
+            Sign In to ChurchConnect
+          </button>
+
+          <!-- Quick Persona Testing for Elders, Officers and Members -->
+          <div class="quick-demo-accounts">
+            <div class="quick-demo-title">Quick Demo Sign-In (Select Persona):</div>
+            <div class="demo-account-grid">
+              <button type="button" class="demo-btn" onclick="quickFillLogin('pastor@churchconnect.ke', 'password123')">
+                <strong>Pr. David Ochieng</strong>
+                <span>Church Pastor</span>
+              </button>
+              <button type="button" class="demo-btn" onclick="quickFillLogin('elder.samuel@churchconnect.ke', 'password123')">
+                <strong>Elder Samuel Omari</strong>
+                <span>First Elder</span>
+              </button>
+              <button type="button" class="demo-btn" onclick="quickFillLogin('elder.joshua@churchconnect.ke', 'password123')">
+                <strong>Elder Joshua Mwiti</strong>
+                <span style="color: var(--sda-blue);">Authorized Elder (Read-Only)</span>
+              </button>
+              <button type="button" class="demo-btn" onclick="quickFillLogin('treasurer@churchconnect.ke', 'password123')">
+                <strong>Grace Wanjiku</strong>
+                <span>Head Treasurer</span>
+              </button>
+              <button type="button" class="demo-btn" onclick="quickFillLogin('clerk@churchconnect.ke', 'password123')">
+                <strong>Ruth Chebet</strong>
+                <span>Church Clerk</span>
+              </button>
+              <button type="button" class="demo-btn" style="border-color: var(--sda-gold);" onclick="quickFillLogin('john.k@gmail.com', 'password123')">
+                <strong>John Kariuki</strong>
+                <span style="color: var(--sda-gold-hover); font-weight: 600;">Church Member</span>
+              </button>
+            </div>
+          </div>
+        </form>
+
+        <!-- Member Registration Form -->
+        <form id="form-register" class="auth-form" onsubmit="handleRegisterSubmit(event)">
+          <div class="form-group">
+            <label class="form-label">Full Name</label>
+            <input type="text" id="reg-name" class="form-control" placeholder="e.g. Samuel K. Omari" required>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Valid Email Address</label>
+            <input type="email" id="reg-email" class="form-control" placeholder="name@domain.ke" required autocomplete="email">
+            <span style="font-size: 11px; color: var(--text-muted);">Must be a valid active email format.</span>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Phone Number (M-Pesa)</label>
+              <input type="text" id="reg-phone" class="form-control" placeholder="2547XXXXXXXX" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Church Member # (If Known)</label>
+              <input type="text" id="reg-mem-num" class="form-control" placeholder="e.g. SDA-2023-001">
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Password Protection</label>
+            <input type="password" id="reg-password" class="form-control" placeholder="Create strong password" required autocomplete="new-password">
+            <span style="font-size: 11px; color: var(--text-muted);">Min. 8 characters with uppercase, lowercase, and a number.</span>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Preferred Department / Ministry</label>
+            <select id="reg-dept" class="form-control">
+              <option value="">-- General Congregation --</option>
+            </select>
+          </div>
+
+          <button type="submit" class="btn btn-gold" style="width: 100%; padding: 12px; margin-top: 6px;">
+            Create Member Account
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================== -->
+  <!-- 2. MAIN APPLICATION CONTAINER -->
+  <!-- ========================================== -->
+  <div class="app-container" id="app-container">
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <div class="church-logo-badge">✝</div>
+        <div class="church-title">
+          <h1>ChurchConnect</h1>
+          <p>Kenya SDA Church System</p>
+        </div>
+      </div>
+
+      <nav class="sidebar-nav" id="sidebar-nav-container">
+        <!-- Dynamically injected links based on user role -->
+      </nav>
+
+      <div class="sidebar-user">
+        <div class="user-info">
+          <div class="user-name" id="user-display-name">Loading...</div>
+          <div class="user-role-tag" id="user-display-role">OFFICER</div>
+        </div>
+        <button class="btn-signout" onclick="handleLogout()">Sign Out</button>
+      </div>
+    </aside>
+
+    <!-- Main Content Area -->
+    <div class="main-wrapper">
+      <!-- Topbar -->
+      <header class="topbar">
+        <div class="page-heading">
+          <h2 id="topbar-title">Church Dashboard</h2>
+          <p id="topbar-sub">Welcome to ChurchConnect Kenya</p>
+        </div>
+        <div class="topbar-actions" id="topbar-actions">
+          <button class="btn btn-outline btn-sm" onclick="handleLogout()">🔒 Logout</button>
+        </div>
+      </header>
+
+      <!-- Page Content -->
+      <main class="page-content">
+
+        <!-- ========================================== -->
+        <!-- MEMBER NON-CONFIDENTIAL DASHBOARD -->
+        <!-- ========================================== -->
+        <section id="section-member-dashboard" class="app-section">
+          <div style="background: linear-gradient(135deg, var(--sda-blue), var(--sda-blue-dark)); color: #fff; padding: 24px; border-radius: var(--radius); margin-bottom: 24px; box-shadow: var(--shadow-md);">
+            <h3 style="font-size: 20px; font-weight: 700; margin-bottom: 6px;" id="member-welcome-text">Welcome back to Church!</h3>
+            <p style="font-size: 13.5px; color: #cbd5e1; max-width: 650px; line-height: 1.5;">
+              "Bring the whole tithe into the storehouse, that there may be food in my house. Test me in this," says the Lord Almighty. — Malachi 3:10
+            </p>
+          </div>
+
+          <div class="stats-grid">
+            <div class="stat-card gold">
+              <div class="stat-card-title">
+                <span>My Tithe Returned</span>
+                <span>🪙</span>
+              </div>
+              <div class="stat-card-value" id="member-kpi-tithe">KES 0.00</div>
+              <div class="stat-card-sub">Recorded under your member account</div>
+            </div>
+
+            <div class="stat-card green">
+              <div class="stat-card-title">
+                <span>My Total Offerings</span>
+                <span>📈</span>
+              </div>
+              <div class="stat-card-value" id="member-kpi-total">KES 0.00</div>
+              <div class="stat-card-sub">Combined giving receipts</div>
+            </div>
+
+            <div class="stat-card">
+              <div class="stat-card-title">
+                <span>Church Congregation</span>
+                <span>👥</span>
+              </div>
+              <div class="stat-card-value" id="member-kpi-congregation">0</div>
+              <div class="stat-card-sub">Active members in fellowship</div>
+            </div>
+          </div>
+
+          <div class="dashboard-grid">
+            <div class="panel-card">
+              <div class="panel-card-header">
+                <div class="panel-card-title">Church Announcements & Notices</div>
+                <button class="btn btn-outline btn-sm" onclick="navigate('announcements')">View All</button>
+              </div>
+              <div class="panel-card-body" id="member-dash-announcements">
+                <p style="color: var(--text-muted); font-size: 13px;">Loading notices...</p>
+              </div>
+            </div>
+
+            <div class="panel-card">
+              <div class="panel-card-header">
+                <div class="panel-card-title">Upcoming Sabbath Worship</div>
+                <button class="btn btn-outline btn-sm" onclick="navigate('events')">Calendar</button>
+              </div>
+              <div class="panel-card-body" id="member-dash-events">
+                <!-- Populated via JS -->
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ========================================== -->
+        <!-- OFFICER EXECUTIVE DASHBOARD -->
+        <!-- ========================================== -->
+        <section id="section-dashboard" class="app-section">
+          <div class="policy-box">
+            <strong>Seventh-day Adventist Financial Stewardship Policy:</strong>
+            Tithe (10%) and Conference Trust Funds are held in sacred trust and remitted 100% to the local Conference/Field. Local operations are funded exclusively through the Combined Church Budget and designated local offerings. Dual authorization (Treasury Review + Committee Approval) is strictly required for all expenditures.
+          </div>
+
+          <div class="stats-grid">
+            <div class="stat-card gold">
+              <div class="stat-card-title">
+                <span>Holy Tithe (Conference)</span>
+                <span>🪙</span>
+              </div>
+              <div class="stat-card-value" id="kpi-tithe">KES 0.00</div>
+              <div class="stat-card-sub">100% remitted to Conference</div>
+            </div>
+
+            <div class="stat-card">
+              <div class="stat-card-title">
+                <span>Local Church Budget</span>
+                <span>⛪</span>
+              </div>
+              <div class="stat-card-value" id="kpi-local-budget">KES 0.00</div>
+              <div class="stat-card-sub">Local operations & maintenance</div>
+            </div>
+
+            <div class="stat-card amber">
+              <div class="stat-card-title">
+                <span>Total Expenditure Paid</span>
+                <span>📤</span>
+              </div>
+              <div class="stat-card-value" id="kpi-expenses">KES 0.00</div>
+              <div class="stat-card-sub">Authorized vouchers disbursed</div>
+            </div>
+
+            <div class="stat-card green">
+              <div class="stat-card-title">
+                <span>Net Local Church Balance</span>
+                <span>📈</span>
+              </div>
+              <div class="stat-card-value" id="kpi-net-reserve">KES 0.00</div>
+              <div class="stat-card-sub">Operating cash reserve</div>
+            </div>
+
+            <div class="stat-card">
+              <div class="stat-card-title">
+                <span>Active Church Members</span>
+                <span>👥</span>
+              </div>
+              <div class="stat-card-value" id="kpi-members">0</div>
+              <div class="stat-card-sub" id="kpi-depts">In 8 Church Departments</div>
+            </div>
+          </div>
+
+          <div class="dashboard-grid">
+            <div class="panel-card">
+              <div class="panel-card-header">
+                <div class="panel-card-title">Giving & Stewardship Distribution</div>
+                <span class="badge badge-secondary">By Fund Type</span>
+              </div>
+              <div class="panel-card-body" style="height: 280px; position: relative;">
+                <canvas id="chart-fund-distribution"></canvas>
+              </div>
+            </div>
+
+            <div class="panel-card">
+              <div class="panel-card-header">
+                <div class="panel-card-title">Pending Vouchers Awaiting Action</div>
+                <span class="badge badge-warning" id="dash-pending-badge">0 Pending</span>
+              </div>
+              <div class="panel-card-body" id="dash-pending-vouchers-list">
+                <p style="color: var(--text-muted); font-size: 13px;">Loading pending requisitions...</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="dashboard-grid">
+            <div class="panel-card">
+              <div class="panel-card-header">
+                <div class="panel-card-title">Recent Tithe & Offering Receipts</div>
+                <button class="btn btn-outline btn-sm" onclick="navigate('treasury')">View All</button>
+              </div>
+              <div class="panel-card-body table-responsive" style="padding: 0;">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th>Receipt #</th>
+                      <th>Giver / Member</th>
+                      <th>Method</th>
+                      <th>Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody id="dash-recent-envelopes">
+                    <!-- Populated via JS -->
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div class="panel-card">
+              <div class="panel-card-header">
+                <div class="panel-card-title">Upcoming Church Calendar</div>
+                <button class="btn btn-outline btn-sm" onclick="navigate('events')">Schedule</button>
+              </div>
+              <div class="panel-card-body" id="dash-upcoming-events">
+                <!-- Populated via JS -->
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ========================================== -->
+        <!-- CHURCH ACCOUNTABILITY CENTRE -->
+        <!-- ========================================== -->
+        <section id="section-accountability" class="app-section">
+          <div class="policy-box">
+            <strong>Church Accountability Centre:</strong>
+            Dedicated governance review for authorized church elders, pastoral staff, and auditors. Verifies recorder attribution, committee authorization quorum, reversal history, and departmental budget warning thresholds (> 80%).
+          </div>
+
+          <!-- Accountability Cards Grid -->
+          <div class="dashboard-grid">
+            <!-- Left: Transaction Attribution By Officer -->
+            <div class="panel-card">
+              <div class="panel-card-header">
+                <div class="panel-card-title">Financial Transaction Entry Attribution</div>
+                <span class="badge badge-info">Accountability Trace</span>
+              </div>
+              <div class="panel-card-body table-responsive" style="padding: 0;">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th>Recording Officer</th>
+                      <th>Role</th>
+                      <th>Receipts Handled</th>
+                      <th>Total Value</th>
+                    </tr>
+                  </thead>
+                  <tbody id="table-acct-officers-body">
+                    <!-- Injected via JS -->
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <!-- Right: Department Budget Utilization Warnings -->
+            <div class="panel-card">
+              <div class="panel-card-header">
+                <div class="panel-card-title">Department Budget Alerts (> 80% Utilization)</div>
+                <span class="badge badge-warning">Threshold Alert</span>
+              </div>
+              <div class="panel-card-body" id="acct-budget-warnings-container">
+                <!-- Populated via JS -->
+              </div>
+            </div>
+          </div>
+
+          <!-- Reversals & Committee Votes Grid -->
+          <div class="dashboard-grid">
+            <!-- Financial Reversals Log -->
+            <div class="panel-card">
+              <div class="panel-card-header">
+                <div class="panel-card-title">Financial Reversals & Corrections (Auditable History)</div>
+                <span class="badge badge-danger">Integrity Log</span>
+              </div>
+              <div class="panel-card-body table-responsive" style="padding: 0;">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th>Receipt #</th>
+                      <th>Original Amount</th>
+                      <th>Reversal Reason</th>
+                      <th>Authorized By</th>
+                      <th>Timestamp</th>
+                    </tr>
+                  </thead>
+                  <tbody id="table-acct-reversals-body">
+                    <!-- Injected via JS -->
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <!-- Approval Committee Decisions Log -->
+            <div class="panel-card">
+              <div class="panel-card-header">
+                <div class="panel-card-title">Recent Committee Approval Votes</div>
+                <span class="badge badge-success">Separation of Duties</span>
+              </div>
+              <div class="panel-card-body table-responsive" style="padding: 0;">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th>Voucher #</th>
+                      <th>Title</th>
+                      <th>Voter</th>
+                      <th>Decision</th>
+                    </tr>
+                  </thead>
+                  <tbody id="table-acct-decisions-body">
+                    <!-- Injected via JS -->
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ========================================== -->
+        <!-- ANNOUNCEMENTS SECTION -->
+        <!-- ========================================== -->
+        <section id="section-announcements" class="app-section">
+          <div class="panel-card">
+            <div class="panel-card-header">
+              <div class="panel-card-title">Church Bulletin & Announcements Board</div>
+              <button class="btn btn-primary btn-sm" id="btn-post-announcement" onclick="openNewAnnouncementModal()" style="display: none;">
+                + Post Announcement
+              </button>
+            </div>
+            <div class="panel-card-body" id="announcements-container">
+              <!-- Dynamically populated announcement cards -->
+            </div>
+          </div>
+        </section>
+
+        <!-- ========================================== -->
+        <!-- MY GIVING HISTORY (MEMBER PRIVATE RECEIPTS) -->
+        <!-- ========================================== -->
+        <section id="section-my-giving" class="app-section">
+          <div class="panel-card">
+            <div class="panel-card-header">
+              <div class="panel-card-title">My Tithe & Offering Giving Receipts</div>
+              <button class="btn btn-gold btn-sm" onclick="navigate('mpesa')">📱 Give via M-Pesa</button>
+            </div>
+            <div class="panel-card-body table-responsive" style="padding: 0;">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Receipt #</th>
+                    <th>Date</th>
+                    <th>Payment Method</th>
+                    <th>M-Pesa / Reference</th>
+                    <th>Fund Breakdown</th>
+                    <th>Total Amount</th>
+                    <th>Digital Receipt</th>
+                  </tr>
+                </thead>
+                <tbody id="table-my-giving-body">
+                  <!-- Injected via JS -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- ========================================== -->
+        <!-- TREASURY & GIVING SECTION (OFFICERS ONLY) -->
+        <!-- ========================================== -->
+        <section id="section-treasury" class="app-section">
+          <div class="panel-card" style="margin-bottom: 24px;">
+            <div class="panel-card-header">
+              <div class="panel-card-title">Tithe & Offering Envelope Register</div>
+              <div style="display: flex; gap: 10px;">
+                <button class="btn btn-gold" id="btn-record-envelope" onclick="openNewEnvelopeModal()">+ Record New Envelope</button>
+                <button class="btn btn-outline" onclick="navigate('mpesa')">📱 M-Pesa Paybill</button>
+              </div>
+            </div>
+            <div class="panel-card-body table-responsive" style="padding: 0;">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Receipt #</th>
+                    <th>Date</th>
+                    <th>Member / Donor</th>
+                    <th>Method</th>
+                    <th>Status</th>
+                    <th>Category Breakdown</th>
+                    <th>Total Amount</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="table-envelopes-body">
+                  <!-- Injected via JS -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- ========================================== -->
+        <!-- VOUCHERS & REQUISITIONS SECTION -->
+        <!-- ========================================== -->
+        <section id="section-vouchers" class="app-section">
+          <div class="policy-box">
+            <strong>Expenditure Workflow Governance (SDA Separation of Duties):</strong>
+            1. Department Leader submits requisition within allocated department budget.<br>
+            2. Church Treasurer reviews funds availability and invoices.<br>
+            3. Church Board Approval Committee reviews and votes on expenditures >= KES 10,000.<br>
+            4. Self-approval is strictly prevented (requesters cannot approve their own requests).<br>
+            5. Treasurer disburses payment via M-Pesa / Cheque / Bank Transfer.
+          </div>
+
+          <div class="panel-card">
+            <div class="panel-card-header">
+              <div class="panel-card-title">Church Expenditure Requisition & Voucher Registry</div>
+              <button class="btn btn-primary" id="btn-create-voucher" onclick="openNewVoucherModal()">+ Create Requisition</button>
+            </div>
+            <div class="panel-card-body table-responsive" style="padding: 0;">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Voucher #</th>
+                    <th>Department</th>
+                    <th>Title & Purpose</th>
+                    <th>Payee</th>
+                    <th>Amount</th>
+                    <th>Status</th>
+                    <th>Governance Stage</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody id="table-vouchers-body">
+                  <!-- Injected via JS -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- ========================================== -->
+        <!-- SAFARICOM M-PESA DARAJA HUB -->
+        <!-- ========================================== -->
+        <section id="section-mpesa" class="app-section">
+          <div class="dashboard-grid">
+            <div class="panel-card">
+              <div class="panel-card-header">
+                <div class="panel-card-title">Safaricom Daraja M-Pesa Inflow Simulator</div>
+                <span class="badge badge-success">Paybill: 174379</span>
+              </div>
+              <div class="panel-card-body">
+                <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 16px;">
+                  Test the real-time recording of mobile giving via Safaricom Daraja API. When a member pays via Paybill or STK Push, an official digital receipt is generated instantly.
+                </p>
+
+                <form id="form-mpesa-sim" onsubmit="handleMpesaSimulation(event)">
+                  <div class="form-group" style="margin-bottom: 14px;">
+                    <label class="form-label">Giver Phone Number (Safaricom)</label>
+                    <input type="text" id="sim-phone" class="form-control" value="254710111222" required>
+                  </div>
+                  <div class="form-row" style="margin-bottom: 14px;">
+                    <div class="form-group">
+                      <label class="form-label">Giving Amount (KES)</label>
+                      <input type="number" id="sim-amount" class="form-control" value="3500" required>
+                    </div>
+                    <div class="form-group">
+                      <label class="form-label">Target Fund Category</label>
+                      <select id="sim-fund" class="form-control" required>
+                        <option value="TITHE">Holy Tithe (Conference Trust)</option>
+                        <option value="CHURCH_BUDGET">Combined Church Budget (Local)</option>
+                        <option value="BUILDING_FUND">Sanctuary Building Fund (Local)</option>
+                        <option value="AY_FUND">Adventist Youth Ministries (Local)</option>
+                        <option value="WELFARE_FUND">Benevolent Welfare Assistance (Local)</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div class="form-row" style="margin-bottom: 18px;">
+                    <div class="form-group">
+                      <label class="form-label">Account Reference (Member Number)</label>
+                      <input type="text" id="sim-ref" class="form-control" value="SDA-2023-001" placeholder="e.g. SDA-2023-001 or TITHE">
+                    </div>
+                    <div class="form-group">
+                      <label class="form-label">Donor Name (if not registered member)</label>
+                      <input type="text" id="sim-donor" class="form-control" value="John Kariuki">
+                    </div>
+                  </div>
+                  <button type="submit" class="btn btn-gold" style="width: 100%;">
+                    ⚡ Trigger Instant M-Pesa Payment Simulation
+                  </button>
+                </form>
+
+                <div id="mpesa-sim-result" style="display: none; margin-top: 20px; padding: 14px; border-radius: 8px; background-color: #ecfdf5; border: 1px solid #a7f3d0;">
+                  <strong style="color: #065f46;">Digital Receipt Generated Successfully!</strong>
+                  <div id="mpesa-sim-result-text" style="font-size: 13px; color: #047857; margin-top: 4px;"></div>
+                </div>
+              </div>
+            </div>
+
+            <div class="panel-card">
+              <div class="panel-card-header">
+                <div class="panel-card-title">M-Pesa Reconciliation & Daraja Config</div>
+                <span class="badge badge-info">Sandbox Active</span>
+              </div>
+              <div class="panel-card-body">
+                <div style="font-size: 13px; line-height: 1.6; color: var(--text-main);">
+                  <p><strong>Business Shortcode:</strong> 174379</p>
+                  <p><strong>Passkey:</strong> bfb279f9aa...9b10f78e</p>
+                  <p><strong>Callback Endpoint:</strong> <code>/api/mpesa/callback</code></p>
+                  <p><strong>C2B Confirmation:</strong> Auto-creates envelope with verified transaction hash</p>
+                  <hr style="margin: 16px 0; border: none; border-top: 1px solid var(--border);">
+                  <div style="background-color: #f8fafc; padding: 12px; border-radius: 6px; font-size: 12px; color: var(--text-muted);">
+                    Transactions automatically reconcile into the Treasury Tithe & Offering ledger, preventing duplicate receipt numbers.
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ========================================== -->
+        <!-- MEMBER DIRECTORY SECTION -->
+        <!-- ========================================== -->
+        <section id="section-members" class="app-section">
+          <div class="panel-card">
+            <div class="panel-card-header">
+              <div class="panel-card-title">Church Membership Roll</div>
+              <div style="display: flex; gap: 10px;">
+                <input type="text" id="member-search-input" class="form-control" placeholder="Search by name, member # or phone..." onkeyup="filterMembers()" style="width: 280px;">
+                <button class="btn btn-primary" id="btn-add-member" onclick="openNewMemberModal()" style="display: none;">+ Add New Member</button>
+              </div>
+            </div>
+            <div class="panel-card-body table-responsive" style="padding: 0;">
+              <table class="data-table">
+                <thead>
+                  <tr id="table-members-header-row">
+                    <!-- Populated dynamically based on role -->
+                  </tr>
+                </thead>
+                <tbody id="table-members-body">
+                  <!-- Injected via JS -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- ========================================== -->
+        <!-- DEPARTMENTS & MINISTRIES SECTION -->
+        <!-- ========================================== -->
+        <section id="section-departments" class="app-section">
+          <div class="stats-grid" id="departments-grid">
+            <!-- Dynamically populated department cards -->
+          </div>
+        </section>
+
+        <!-- ========================================== -->
+        <!-- CHURCH ASSETS & INVENTORY -->
+        <!-- ========================================== -->
+        <section id="section-assets" class="app-section">
+          <div class="panel-card">
+            <div class="panel-card-header">
+              <div class="panel-card-title">Church Assets & Property Inventory</div>
+              <button class="btn btn-primary btn-sm" id="btn-add-asset" onclick="openNewAssetModal()">+ Register Asset</button>
+            </div>
+            <div class="panel-card-body table-responsive" style="padding: 0;">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Asset Tag</th>
+                    <th>Asset Description</th>
+                    <th>Category</th>
+                    <th>Quantity</th>
+                    <th>Location</th>
+                    <th>Condition</th>
+                    <th>Custodian</th>
+                    <th>Purchase Value</th>
+                  </tr>
+                </thead>
+                <tbody id="table-assets-body">
+                  <!-- Injected via JS -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- ========================================== -->
+        <!-- MEETINGS & RESOLUTIONS SECTION -->
+        <!-- ========================================== -->
+        <section id="section-meetings" class="app-section">
+          <div class="panel-card">
+            <div class="panel-card-header">
+              <div class="panel-card-title">Church Board Minutes & Action Resolutions</div>
+              <span class="badge badge-info">Elders & Board Council</span>
+            </div>
+            <div class="panel-card-body" id="meetings-container">
+              <!-- Injected via JS -->
+            </div>
+          </div>
+        </section>
+
+        <!-- ========================================== -->
+        <!-- EVENTS & ATTENDANCE SECTION -->
+        <!-- ========================================== -->
+        <section id="section-events" class="app-section">
+          <div class="dashboard-grid">
+            <div class="panel-card">
+              <div class="panel-card-header">
+                <div class="panel-card-title">Church Calendar & Programmes</div>
+                <button class="btn btn-primary btn-sm" id="btn-add-event" onclick="openNewEventModal()" style="display: none;">+ Schedule Event</button>
+              </div>
+              <div class="panel-card-body table-responsive" style="padding: 0;">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th>Programme Title</th>
+                      <th>Location</th>
+                      <th>Start Time</th>
+                      <th>Coordinator</th>
+                    </tr>
+                  </thead>
+                  <tbody id="table-events-body">
+                    <!-- Populated via JS -->
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div class="panel-card" id="card-attendance-wrapper">
+              <div class="panel-card-header">
+                <div class="panel-card-title">Sabbath Attendance Register</div>
+                <button class="btn btn-gold btn-sm" id="btn-record-attendance" onclick="openAttendanceModal()" style="display: none;">+ Record Attendance</button>
+              </div>
+              <div class="panel-card-body table-responsive" style="padding: 0;">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th>Date</th>
+                      <th>Service Type</th>
+                      <th>Adults</th>
+                      <th>Children</th>
+                      <th>Visitors</th>
+                      <th>Total</th>
+                    </tr>
+                  </thead>
+                  <tbody id="table-attendance-body">
+                    <!-- Populated via JS -->
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ========================================== -->
+        <!-- SDA MONTHLY FINANCIAL STATEMENT (OFFICERS) -->
+        <!-- ========================================== -->
+        <section id="section-reports" class="app-section">
+          <div class="panel-card">
+            <div class="panel-card-header">
+              <div class="panel-card-title">Seventh-day Adventist Local Church Monthly Treasury Statement</div>
+              <button class="btn btn-outline btn-sm" onclick="window.print()">🖨️ Print Statement</button>
+            </div>
+            <div class="panel-card-body">
+              <div id="statement-content" style="font-size: 13.5px; line-height: 1.6;">
+                <p>Generating monthly statement...</p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ========================================== -->
+        <!-- AUDIT TRAIL SECTION (OFFICERS) -->
+        <!-- ========================================== -->
+        <section id="section-audit" class="app-section">
+          <div class="panel-card">
+            <div class="panel-card-header">
+              <div class="panel-card-title">Immutable Church System Audit Trail</div>
+              <div style="display: flex; gap: 8px;">
+                <button class="btn btn-outline btn-sm" onclick="downloadDisasterRecoveryBackup()">💾 Backup Database</button>
+                <span class="badge badge-info">Financial & Admin Transparency</span>
+              </div>
+            </div>
+            <div class="panel-card-body table-responsive" style="padding: 0;">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Timestamp</th>
+                    <th>Officer</th>
+                    <th>Role</th>
+                    <th>Action</th>
+                    <th>Entity</th>
+                    <th>Details</th>
+                  </tr>
+                </thead>
+                <tbody id="table-audit-body">
+                  <!-- Injected via JS -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+      </main>
+    </div>
+  </div>
+
+  <!-- ========================================== -->
+  <!-- MODALS -->
+  <!-- ========================================== -->
+
+  <!-- View Digital Contribution Receipt Modal with QR Verification -->
+  <div class="modal-overlay" id="modal-view-receipt">
+    <div class="modal-container" style="max-width: 500px;">
+      <div class="modal-header">
+        <h3 class="modal-title">Digital Contribution Receipt</h3>
+        <button class="modal-close" onclick="closeModal('modal-view-receipt')">&times;</button>
+      </div>
+      <div class="modal-body" id="receipt-modal-content">
+        <!-- Injected via JS -->
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline" onclick="closeModal('modal-view-receipt')">Close</button>
+        <button type="button" class="btn btn-primary" onclick="window.print()">🖨️ Print Receipt</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Reverse Financial Envelope Modal -->
+  <div class="modal-overlay" id="modal-reverse-envelope">
+    <div class="modal-container" style="max-width: 480px;">
+      <div class="modal-header">
+        <h3 class="modal-title" style="color: var(--danger);">Reverse Financial Record</h3>
+        <button class="modal-close" onclick="closeModal('modal-reverse-envelope')">&times;</button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="rev-envelope-id">
+        <p id="rev-envelope-summary" style="font-size: 13.5px;"></p>
+        <div class="form-group" style="margin-top: 14px;">
+          <label class="form-label">Mandatory Reversal Justification</label>
+          <textarea id="rev-envelope-reason" class="form-control" rows="3" placeholder="Provide detailed audit reason for transaction reversal..." required></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline" onclick="closeModal('modal-reverse-envelope')">Cancel</button>
+        <button type="button" class="btn btn-danger" onclick="executeEnvelopeReversal()">Confirm Reversal</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Record Envelope Modal -->
+  <div class="modal-overlay" id="modal-envelope">
+    <div class="modal-container">
+      <div class="modal-header">
+        <h3 class="modal-title">Record Tithe & Offering Envelope</h3>
+        <button class="modal-close" onclick="closeModal('modal-envelope')">&times;</button>
+      </div>
+      <form id="form-envelope" onsubmit="submitEnvelope(event)">
+        <div class="modal-body">
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Church Member (Optional)</label>
+              <select id="env-member-id" class="form-control" onchange="autoFillMemberDetails()">
+                <option value="">-- Non-Member / Visitor --</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Payment Method</label>
+              <select id="env-payment-method" class="form-control" required>
+                <option value="CASH">Cash</option>
+                <option value="MPESA">M-Pesa</option>
+                <option value="BANK_TRANSFER">Bank Deposit / EFT</option>
+                <option value="CHEQUE">Cheque</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Giver Name</label>
+              <input type="text" id="env-donor-name" class="form-control" placeholder="Full name">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Giver Phone</label>
+              <input type="text" id="env-donor-phone" class="form-control" placeholder="e.g. 254712345678">
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Payment Reference / M-Pesa Code</label>
+            <input type="text" id="env-ref" class="form-control" placeholder="e.g. QA12345678 or Slip #">
+          </div>
+
+          <hr style="border: none; border-top: 1px solid var(--border);">
+          <h4 style="font-size: 13.5px; font-weight: 600; color: var(--sda-blue-dark);">Offering Allocations</h4>
+
+          <div id="envelope-items-container" style="display: flex; flex-direction: column; gap: 8px;">
+            <!-- Category lines generated dynamically -->
+          </div>
+
+          <div style="background-color: #f8fafc; padding: 12px; border-radius: 8px; display: flex; justify-content: space-between; align-items: center;">
+            <strong style="font-size: 14px;">Total Envelope Amount:</strong>
+            <strong style="font-size: 18px; color: var(--sda-blue);" id="env-calculated-total">KES 0.00</strong>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline" onclick="closeModal('modal-envelope')">Cancel</button>
+          <button type="submit" class="btn btn-gold">Confirm & Print Digital Receipt</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Post Announcement Modal -->
+  <div class="modal-overlay" id="modal-announcement">
+    <div class="modal-container">
+      <div class="modal-header">
+        <h3 class="modal-title">Publish Church Announcement</h3>
+        <button class="modal-close" onclick="closeModal('modal-announcement')">&times;</button>
+      </div>
+      <form id="form-announcement" onsubmit="submitAnnouncement(event)">
+        <div class="modal-body">
+          <div class="form-group">
+            <label class="form-label">Announcement Title</label>
+            <input type="text" id="ann-title" class="form-control" placeholder="e.g. Communion Sabbath & Fellowship Lunch" required>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Category</label>
+              <select id="ann-category" class="form-control">
+                <option value="GENERAL">General Church Notice</option>
+                <option value="SABBATH_SERVICE">Sabbath Worship</option>
+                <option value="YOUTH">Adventist Youth (AY)</option>
+                <option value="PRAYER_REQUEST">Prayer Request</option>
+                <option value="LEADERSHIP">Church Leadership</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Target Audience</label>
+              <select id="ann-audience" class="form-control">
+                <option value="ALL">All Church Members & Visitors</option>
+                <option value="MEMBERS_ONLY">Registered Members Only</option>
+                <option value="LEADERS_ONLY">Church Officers & Board Only</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Content</label>
+            <textarea id="ann-content" class="form-control" rows="4" placeholder="Type the full announcement message here..." required></textarea>
+          </div>
+          <div class="form-group">
+            <label style="display: flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer;">
+              <input type="checkbox" id="ann-pinned"> Pin announcement to the top of the bulletin
+            </label>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline" onclick="closeModal('modal-announcement')">Cancel</button>
+          <button type="submit" class="btn btn-primary">Publish Announcement</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Committee Vote Modal (Separation of Duties) -->
+  <div class="modal-overlay" id="modal-committee-vote">
+    <div class="modal-container">
+      <div class="modal-header">
+        <h3 class="modal-title">Church Board Approval Committee Vote</h3>
+        <button class="modal-close" onclick="closeModal('modal-committee-vote')">&times;</button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="vote-voucher-id">
+        <p id="vote-voucher-summary" style="font-size: 13.5px;"></p>
+        <div class="form-group" style="margin-top: 14px;">
+          <label class="form-label">Your Committee Decision</label>
+          <select id="vote-decision" class="form-control">
+            <option value="APPROVE">Approve Expenditure Request</option>
+            <option value="REQUEST_REVISION">Request Modification / Invoices</option>
+            <option value="REJECT">Reject Request</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Committee Deliberation Notes</label>
+          <textarea id="vote-notes" class="form-control" rows="2" placeholder="Record reason or board action minute number..."></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline" onclick="closeModal('modal-committee-vote')">Cancel</button>
+        <button type="button" class="btn btn-primary" onclick="executeCommitteeVote()">Submit Official Vote</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- New Requisition Modal -->
+  <div class="modal-overlay" id="modal-voucher">
+    <div class="modal-container">
+      <div class="modal-header">
+        <h3 class="modal-title">Create Department Expenditure Requisition</h3>
+        <button class="modal-close" onclick="closeModal('modal-voucher')">&times;</button>
+      </div>
+      <form id="form-voucher" onsubmit="submitVoucher(event)">
+        <div class="modal-body">
+          <div class="form-group">
+            <label class="form-label">Target Church Department</label>
+            <select id="vch-dept" class="form-control" required onchange="updateDeptBudgetPreview()">
+              <!-- Options populated dynamically -->
+            </select>
+            <span id="vch-budget-note" style="font-size: 11.5px; color: var(--text-muted); margin-top: 3px;"></span>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Requisition Title / Subject</label>
+            <input type="text" id="vch-title" class="form-control" placeholder="e.g. Sound equipment rental for youth rally" required>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Detailed Justification / Description</label>
+            <textarea id="vch-desc" class="form-control" rows="3" placeholder="Provide background and church board rationale..." required></textarea>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Amount Required (KES)</label>
+              <input type="number" id="vch-amount" class="form-control" min="1" step="any" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Payment Method</label>
+              <select id="vch-method" class="form-control">
+                <option value="MPESA">M-Pesa B2C</option>
+                <option value="BANK_TRANSFER">Bank Transfer / EFT</option>
+                <option value="CHEQUE">Cheque</option>
+                <option value="CASH">Petty Cash</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Payee / Supplier Name</label>
+              <input type="text" id="vch-payee" class="form-control" placeholder="Vendor or Officer name" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Payee Phone (For M-Pesa)</label>
+              <input type="text" id="vch-phone" class="form-control" placeholder="2547XXXXXXXX">
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline" onclick="closeModal('modal-voucher')">Cancel</button>
+          <button type="submit" class="btn btn-primary">Submit for Treasury Review</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Review Voucher Modal (Treasury Step 1) -->
+  <div class="modal-overlay" id="modal-review-voucher">
+    <div class="modal-container">
+      <div class="modal-header">
+        <h3 class="modal-title">Treasury Review (Step 1)</h3>
+        <button class="modal-close" onclick="closeModal('modal-review-voucher')">&times;</button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="rev-voucher-id">
+        <p id="rev-voucher-summary" style="font-size: 13.5px;"></p>
+        <div class="form-group" style="margin-top: 14px;">
+          <label class="form-label">Treasury Verification Notes</label>
+          <textarea id="rev-notes" class="form-control" rows="2" placeholder="e.g. Budget verified against departmental vote. Approved to forward."></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-danger" onclick="executeVoucherReview('REJECT')">Reject Requisition</button>
+        <button type="button" class="btn btn-success" onclick="executeVoucherReview('APPROVE')">Confirm & Forward</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Elder Authorize Modal -->
+  <div class="modal-overlay" id="modal-elder-voucher">
+    <div class="modal-container">
+      <div class="modal-header">
+        <h3 class="modal-title">First Elder / Pastor Authorization</h3>
+        <button class="modal-close" onclick="closeModal('modal-elder-voucher')">&times;</button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="eld-voucher-id">
+        <p id="eld-voucher-summary" style="font-size: 13.5px;"></p>
+        <div class="form-group" style="margin-top: 14px;">
+          <label class="form-label">Church Board / Elder Authorization Minute</label>
+          <textarea id="eld-notes" class="form-control" rows="2" placeholder="e.g. Authorized by Church Board action min 56/2026."></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-danger" onclick="executeElderApproval('REJECT')">Decline Authorization</button>
+        <button type="button" class="btn btn-gold" onclick="executeElderApproval('APPROVE')">Grant Final Authorization</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Disburse Payment Modal -->
+  <div class="modal-overlay" id="modal-disburse-voucher">
+    <div class="modal-container">
+      <div class="modal-header">
+        <h3 class="modal-title">Execute Voucher Payout & Disbursement</h3>
+        <button class="modal-close" onclick="closeModal('modal-disburse-voucher')">&times;</button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="disb-voucher-id">
+        <p id="disb-voucher-summary" style="font-size: 13.5px;"></p>
+        <div class="form-row" style="margin-top: 14px;">
+          <div class="form-group">
+            <label class="form-label">Disbursement Method</label>
+            <select id="disb-method" class="form-control">
+              <option value="MPESA">M-Pesa B2C</option>
+              <option value="BANK_TRANSFER">Bank Transfer / EFT</option>
+              <option value="CHEQUE">Cheque</option>
+              <option value="CASH">Cash</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Transaction Reference #</label>
+            <input type="text" id="disb-ref" class="form-control" placeholder="e.g. MP-B2C-987654 or Cheque #102">
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline" onclick="closeModal('modal-disburse-voucher')">Cancel</button>
+        <button type="submit" class="btn btn-success" onclick="executeDisbursement()">Confirm Payout & Deduct Budget</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- New Asset Modal -->
+  <div class="modal-overlay" id="modal-asset">
+    <div class="modal-container">
+      <div class="modal-header">
+        <h3 class="modal-title">Register Church Property / Asset</h3>
+        <button class="modal-close" onclick="closeModal('modal-asset')">&times;</button>
+      </div>
+      <form id="form-asset" onsubmit="submitAsset(event)">
+        <div class="modal-body">
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Asset Tag Number</label>
+              <input type="text" id="ast-tag" class="form-control" placeholder="e.g. AST-2026-025" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Category</label>
+              <select id="ast-cat" class="form-control">
+                <option value="SOUND_EQUIPMENT">Sound Equipment / PA</option>
+                <option value="INSTRUMENT">Musical Instrument</option>
+                <option value="FURNITURE">Sanctuary Furniture / Pews</option>
+                <option value="SANCTUARY">Electronics / Projector</option>
+                <option value="COMPUTER">Computer & IT</option>
+                <option value="VEHICLE">Church Vehicle</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Asset Name & Description</label>
+            <input type="text" id="ast-name" class="form-control" placeholder="e.g. Yamaha Acoustic Guitar" required>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Quantity</label>
+              <input type="number" id="ast-qty" class="form-control" min="1" value="1" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Location / Room</label>
+              <input type="text" id="ast-loc" class="form-control" placeholder="Main Sanctuary / Hall" required>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Condition</label>
+              <select id="ast-cond" class="form-control">
+                <option value="EXCELLENT">Excellent</option>
+                <option value="GOOD">Good</option>
+                <option value="FAIR">Fair</option>
+                <option value="NEEDS_REPAIR">Needs Repair</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Purchase Cost (KES)</label>
+              <input type="number" id="ast-cost" class="form-control" min="0" value="0">
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline" onclick="closeModal('modal-asset')">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save Asset to Registry</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- New Member Modal -->
+  <div class="modal-overlay" id="modal-member">
+    <div class="modal-container">
+      <div class="modal-header">
+        <h3 class="modal-title">Register Church Member</h3>
+        <button class="modal-close" onclick="closeModal('modal-member')">&times;</button>
+      </div>
+      <form id="form-member" onsubmit="submitMember(event)">
+        <div class="modal-body">
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Member Number</label>
+              <input type="text" id="mem-num" class="form-control" placeholder="e.g. SDA-2026-009" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Gender</label>
+              <select id="mem-gender" class="form-control">
+                <option value="MALE">Male</option>
+                <option value="FEMALE">Female</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">First Name</label>
+              <input type="text" id="mem-fn" class="form-control" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Last Name</label>
+              <input type="text" id="mem-ln" class="form-control" required>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Phone Number</label>
+              <input type="text" id="mem-phone" class="form-control" placeholder="2547XXXXXXXX">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Email</label>
+              <input type="email" id="mem-email" class="form-control">
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Baptism Date</label>
+              <input type="date" id="mem-bap-date" class="form-control">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Baptism Church</label>
+              <input type="text" id="mem-bap-church" class="form-control" placeholder="e.g. Nairobi Central SDA">
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Department</label>
+              <select id="mem-dept" class="form-control">
+                <!-- Injected via JS -->
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Residence / Estate</label>
+              <input type="text" id="mem-residence" class="form-control" placeholder="e.g. South C, Nairobi">
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline" onclick="closeModal('modal-member')">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save Member</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- New Event Modal -->
+  <div class="modal-overlay" id="modal-event">
+    <div class="modal-container">
+      <div class="modal-header">
+        <h3 class="modal-title">Schedule Church Event</h3>
+        <button class="modal-close" onclick="closeModal('modal-event')">&times;</button>
+      </div>
+      <form id="form-event" onsubmit="submitEvent(event)">
+        <div class="modal-body">
+          <div class="form-group">
+            <label class="form-label">Programme Title</label>
+            <input type="text" id="evt-title" class="form-control" placeholder="e.g. Youth Camporee / Week of Prayer" required>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Location</label>
+            <input type="text" id="evt-loc" class="form-control" placeholder="Main Sanctuary / Hall" required>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Start Date & Time</label>
+              <input type="datetime-local" id="evt-start" class="form-control" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label">End Date & Time</label>
+              <input type="datetime-local" id="evt-end" class="form-control" required>
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Department (Optional)</label>
+            <select id="evt-dept" class="form-control">
+              <option value="">-- General Church Programme --</option>
+            </select>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline" onclick="closeModal('modal-event')">Cancel</button>
+          <button type="submit" class="btn btn-primary">Schedule Event</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Record Attendance Modal -->
+  <div class="modal-overlay" id="modal-attendance">
+    <div class="modal-container">
+      <div class="modal-header">
+        <h3 class="modal-title">Record Sabbath Service Attendance</h3>
+        <button class="modal-close" onclick="closeModal('modal-attendance')">&times;</button>
+      </div>
+      <form id="form-attendance" onsubmit="submitAttendance(event)">
+        <div class="modal-body">
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Service Type</label>
+              <select id="att-service" class="form-control">
+                <option value="DIVINE_SERVICE">Divine Service (Main Service)</option>
+                <option value="SABBATH_SCHOOL">Sabbath School</option>
+                <option value="YOUTH_SERVICE">Adventist Youth (AY) Service</option>
+                <option value="MIDWEEK_PRAYER">Wednesday Prayer Meeting</option>
+                <option value="SPECIAL_EVENT">Camp Meeting / Special Service</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Date</label>
+              <input type="date" id="att-date" class="form-control" required>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Adults Count</label>
+              <input type="number" id="att-adults" class="form-control" min="0" value="0" required onchange="calculateAttTotal()">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Children Count</label>
+              <input type="number" id="att-children" class="form-control" min="0" value="0" required onchange="calculateAttTotal()">
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Visitors Count</label>
+            <input type="number" id="att-visitors" class="form-control" min="0" value="0" required onchange="calculateAttTotal()">
+          </div>
+          <div style="background-color: #f8fafc; padding: 12px; border-radius: 6px;">
+            Total Congregation: <strong id="att-total-display" style="font-size: 16px; color: var(--sda-blue);">0</strong>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline" onclick="closeModal('modal-attendance')">Cancel</button>
+          <button type="submit" class="btn btn-gold">Save Attendance</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div id="toast-container"></div>
+  <script src="/static/js/app.js"></script>
+</body>
+</html>

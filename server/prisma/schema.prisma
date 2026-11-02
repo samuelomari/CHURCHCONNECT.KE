@@ -1,0 +1,209 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id              String               @id @default(uuid())
+  email           String               @unique
+  passwordHash    String
+  fullName        String
+  phone           String?
+  role            String               @default("MEMBER") // CHURCH_ADMIN, PASTOR, FIRST_ELDER, HEAD_TREASURER, ASSISTANT_TREASURER, CHURCH_CLERK, DEPARTMENT_LEADER, AUDITOR, MEMBER
+  departmentId    String?
+  department      Department?          @relation("DepartmentMembers", fields: [departmentId], references: [id])
+  ledDepartment   Department?          @relation("DepartmentLeader")
+  active          Boolean              @default(true)
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+
+  envelopesRecorded TitheOfferingEnvelope[] @relation("RecordedBy")
+  vouchersRequested ExpenditureVoucher[]    @relation("RequestedBy")
+  vouchersReviewed  ExpenditureVoucher[]    @relation("ReviewedBy")
+  vouchersApproved  ExpenditureVoucher[]    @relation("ApprovedBy")
+  auditLogs         AuditLog[]
+  eventsCoordinated Event[]
+  attendancesRecorded Attendance[]
+}
+
+model Department {
+  id               String               @id @default(uuid())
+  name             String               @unique
+  code             String               @unique
+  description      String?
+  leaderId         String?              @unique
+  leader           User?                @relation("DepartmentLeader", fields: [leaderId], references: [id])
+  budgetAllocation Float                @default(0.0)
+  budgetSpent      Float                @default(0.0)
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+
+  members          User[]               @relation("DepartmentMembers")
+  churchMembers    Member[]
+  vouchers         ExpenditureVoucher[]
+  events           Event[]
+}
+
+model Member {
+  id                    String                  @id @default(uuid())
+  memberNumber          String                  @unique
+  firstName             String
+  lastName              String
+  phone                 String?
+  email                 String?
+  gender                String                  // MALE, FEMALE
+  dateOfBirth           DateTime?
+  baptismDate           DateTime?
+  baptismChurch         String?
+  status                String                  @default("ACTIVE") // ACTIVE, TRANSFERRED, INACTIVE, DECEASED
+  emergencyContactName  String?
+  emergencyContactPhone String?
+  residence             String?
+  departmentId          String?
+  department            Department?             @relation(fields: [departmentId], references: [id])
+  createdAt             DateTime                @default(now())
+  updatedAt             DateTime                @updatedAt
+
+  envelopes             TitheOfferingEnvelope[]
+}
+
+model FundCategory {
+  id                     String         @id @default(uuid())
+  name                   String         @unique
+  code                   String         @unique
+  fundType               String         // CONFERENCE_TRUST, LOCAL_CHURCH
+  isRemittedToConference Boolean        @default(false)
+  description            String?
+  active                 Boolean        @default(true)
+  createdAt              DateTime       @default(now())
+  updatedAt              DateTime       @updatedAt
+
+  items                  EnvelopeItem[]
+}
+
+model TitheOfferingEnvelope {
+  id                  String         @id @default(uuid())
+  receiptNumber       String         @unique
+  memberId            String?
+  member              Member?        @relation(fields: [memberId], references: [id])
+  donorName           String?
+  donorPhone          String?
+  paymentMethod       String         @default("CASH") // CASH, MPESA, BANK_TRANSFER, CHEQUE
+  mpesaReceiptNumber  String?
+  transactionDate     DateTime       @default(now())
+  totalAmount         Float
+  status              String         @default("CONFIRMED") // CONFIRMED, PENDING_RECONCILIATION, VOID
+  notes               String?
+  recordedById        String
+  recordedBy          User           @relation("RecordedBy", fields: [recordedById], references: [id])
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
+
+  items               EnvelopeItem[]
+}
+
+model EnvelopeItem {
+  id             String                @id @default(uuid())
+  envelopeId     String
+  envelope       TitheOfferingEnvelope @relation(fields: [envelopeId], references: [id], onDelete: Cascade)
+  fundCategoryId String
+  fundCategory   FundCategory          @relation(fields: [fundCategoryId], references: [id])
+  amount         Float
+}
+
+model ExpenditureVoucher {
+  id                   String       @id @default(uuid())
+  voucherNumber        String       @unique
+  title                String
+  description          String
+  departmentId         String
+  department           Department   @relation(fields: [departmentId], references: [id])
+  requestedById        String
+  requestedBy          User         @relation("RequestedBy", fields: [requestedById], references: [id])
+  amount               Float
+  payeeName            String
+  payeePhone           String?
+  status               String       @default("SUBMITTED") // DRAFT, SUBMITTED, TREASURER_REVIEWED, ELDER_APPROVED, REJECTED, PAID
+  
+  treasurerReviewedById String?
+  treasurerReviewedBy   User?       @relation("ReviewedBy", fields: [treasurerReviewedById], references: [id])
+  treasurerReviewedAt   DateTime?
+  treasurerNotes        String?
+
+  elderApprovedById    String?
+  elderApprovedBy      User?        @relation("ApprovedBy", fields: [elderApprovedById], references: [id])
+  elderApprovedAt      DateTime?
+  elderNotes           String?
+
+  rejectionReason      String?
+  paymentMethod        String?      // MPESA, CHEQUE, CASH, BANK_TRANSFER
+  paymentReference     String?
+  paidAt               DateTime?
+
+  createdAt            DateTime     @default(now())
+  updatedAt            DateTime     @updatedAt
+}
+
+model Event {
+  id             String      @id @default(uuid())
+  title          String
+  description    String?
+  departmentId   String?
+  department     Department? @relation(fields: [departmentId], references: [id])
+  coordinatorId  String?
+  coordinator    User?       @relation(fields: [coordinatorId], references: [id])
+  location       String
+  startDate      DateTime
+  endDate        DateTime
+  isPublic       Boolean     @default(true)
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+}
+
+model Attendance {
+  id             String    @id @default(uuid())
+  serviceType    String    // SABBATH_SCHOOL, DIVINE_SERVICE, YOUTH_SERVICE, MIDWEEK_PRAYER, SPECIAL_EVENT
+  date           DateTime
+  adultCount     Int       @default(0)
+  childrenCount  Int       @default(0)
+  visitorsCount  Int       @default(0)
+  totalCount     Int       @default(0)
+  notes          String?
+  recordedById   String
+  recordedBy     User      @relation(fields: [recordedById], references: [id])
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+}
+
+model MpesaTransaction {
+  id                 String    @id @default(uuid())
+  merchantRequestId  String?
+  checkoutRequestId  String?   @unique
+  receiptNumber      String?   @unique
+  amount             Float
+  phone              String
+  accountReference   String    // Member number or Fund Category
+  transactionDate    DateTime?
+  status             String    @default("INITIATED") // INITIATED, SUCCESS, FAILED
+  resultDesc         String?
+  rawCallback        String?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  userId     String?
+  user       User?    @relation(fields: [userId], references: [id])
+  action     String   // e.g., CREATE_RECEIPT, APPROVE_VOUCHER, RECORD_ATTENDANCE
+  entity     String   // TitheOfferingEnvelope, ExpenditureVoucher, Member, etc.
+  entityId   String?
+  details    String?  // JSON stringified metadata or summary
+  ipAddress  String?
+  createdAt  DateTime @default(now())
+}
+
