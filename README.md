@@ -76,8 +76,9 @@ The system serves two distinct user classes with completely separate interfaces:
 #### Member Management
 - Full membership roll with baptism records, phone, email, department, residence
 - Officer view includes a **Contribution Summary** button per member — shows per-fund totals and full receipt history (Treasurer/Pastor/Elder/Auditor only)
-- Member search by name, member number, or phone
-- Add new members (Church Clerk, Pastor, First Elder)
+- Search by name, member number, phone, email, or department; filter by membership status and department
+- Add new members and manage membership status (Active, Inactive, Transferred, Deceased, Disfellowshipped)
+- Status changes can include a reason and are retained in a member history with the acting clerk or leader
 
 #### Church Assets & Inventory
 - Asset registry with tag number, category, quantity, location, condition, custodian, purchase cost, notes
@@ -95,10 +96,16 @@ The system serves two distinct user classes with completely separate interfaces:
 - 8 departments with budget allocation, budget spent, remaining balance
 - Visual progress bar with colour thresholds (>65% = amber, >85% = red)
 - Leader contact info, member count, voucher count
+- Church Clerk, Pastor, or First Elder can create and edit departments, appoint or reassign a leader, and record ministry activities
+- Appointed leaders receive the Department Leader role; a leader can record activities only for their own department
+- Department and leader changes are audit-logged; a leader cannot be assigned to multiple departments
 
 #### Events & Attendance
-- Church calendar with programme title, location, start/end time, coordinator
-- Sabbath attendance register — adults, children, visitors, total per service type
+- Church calendar includes programme title, description, location, date/time, department, and coordinator
+- Search and filter programmes by upcoming/past dates and department
+- Attendance records include adult, children, and visitor counts, service type, and optional notes
+- Attendance can be linked to an event; dates and counts are validated and totals are calculated by the server
+- Filter attendance history by date and service type
 
 #### Accountability Centre (Officers)
 - Transaction entry attribution by recording officer
@@ -331,8 +338,16 @@ All accounts use password: `password123`
 | Method | Endpoint | Access | Description |
 |---|---|---|---|
 | `GET` | `/api/members` | Any | Member directory (officers get full data) |
+| `GET` | `/api/members?search=<term>&status=<status>&department_id=<id>` | Officers | Search and filter the officer member directory; regular members only see active members |
 | `POST` | `/api/members` | Clerk, Pastor, Elder | Add new member |
+| `PATCH` | `/api/members/<id>/status` | Clerk, Pastor, Elder | Change membership status and record a reason |
+| `GET` | `/api/members/<id>/status-history` | Clerk, Pastor, Elder, Auditor | View status change history |
 | `GET` | `/api/departments` | Any | Departments (officers get budget data) |
+| `GET` | `/api/departments/leader-candidates` | Clerk, Pastor, Elder | List active members eligible to lead a department |
+| `POST` | `/api/departments` | Clerk, Pastor, Elder | Create a department and assign an eligible leader |
+| `PATCH` | `/api/departments/<id>` | Clerk, Pastor, Elder | Edit department details or reassign its leader |
+| `GET` | `/api/departments/<id>/activities` | Any authenticated user | List department activities |
+| `POST` | `/api/departments/<id>/activities` | Clerk, Pastor, Elder, assigned Department Leader | Record a department activity |
 | `GET` | `/api/officers` | Any | List all non-member active users |
 
 ### Assets, Meetings & Events
@@ -342,10 +357,10 @@ All accounts use password: `password123`
 | `POST` | `/api/assets` | Clerk, Treasurer, Pastor, Elder | Register new asset |
 | `GET` | `/api/meetings` | Officers | Board minutes & resolutions |
 | `POST` | `/api/meetings` | Pastor, Elder, Clerk | Record new meeting minutes |
-| `GET` | `/api/events` | Any | Church calendar |
+| `GET` | `/api/events?when=<upcoming|past|all>&search=<term>&department_id=<id>` | Any | Search and filter the church calendar |
 | `POST` | `/api/events` | Pastor, Elder, Clerk, Dept Leader | Schedule event |
-| `GET` | `/api/attendance` | Any | Attendance records |
-| `POST` | `/api/attendance` | Clerk, Pastor, Elder | Record attendance |
+| `GET` | `/api/attendance?date_from=<YYYY-MM-DD>&date_to=<YYYY-MM-DD>&service_type=<type>&event_id=<id>` | Any | Filter attendance records, including event-linked records |
+| `POST` | `/api/attendance` | Clerk, Pastor, Elder | Record validated attendance and optionally link it to an event |
 
 ### Announcements
 | Method | Endpoint | Access | Description |
@@ -369,7 +384,7 @@ All accounts use password: `password123`
 
 ## 9. Database Schema
 
-### 21 Tables
+### 25 Tables
 
 | Table | Purpose |
 |---|---|
@@ -388,12 +403,16 @@ All accounts use password: `password123`
 | `church_assets` | Property inventory with custodian, condition, cost |
 | `meetings` | Board meeting records with minutes text |
 | `resolutions` | Action resolutions attached to meetings |
+| `meeting_access_grants` | Explicit access grants for restricted meeting records |
 | `announcements` | Church bulletin with audience targeting |
 | `events` | Church calendar entries |
-| `attendance` | Sabbath service headcounts |
+| `attendance` | Service headcounts, notes, and optional linked event |
+| `church_documents` | Church documents with category and audience controls |
+| `departmental_activities` | Ministry activity logs with date, participants, outcome, and recorder |
+| `member_status_history` | Attributed membership status changes and reasons |
 | `audit_logs` | Immutable log of every system action |
 | `payment_transactions` | M-Pesa and payment provider transaction records |
-| `mpesa_transactions` | Safaricom Daraja callback records |
+| `notifications` | User-targeted notifications and read status |
 
 ---
 

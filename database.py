@@ -217,6 +217,7 @@ def init_db():
     -- Attendance
     CREATE TABLE IF NOT EXISTS attendance (
         id TEXT PRIMARY KEY,
+        event_id TEXT,
         service_type TEXT NOT NULL,
         date TEXT NOT NULL,
         adult_count INTEGER NOT NULL DEFAULT 0,
@@ -226,6 +227,7 @@ def init_db():
         notes TEXT,
         recorded_by_id TEXT NOT NULL,
         created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE SET NULL,
         FOREIGN KEY (recorded_by_id) REFERENCES users(id)
     );
 
@@ -384,6 +386,7 @@ def init_db():
         ("users", "two_factor_secret", "TEXT"),
         ("users", "failed_attempts", "INTEGER NOT NULL DEFAULT 0"),
         ("users", "locked_until", "TEXT"),
+        ("attendance", "event_id", "TEXT REFERENCES events(id) ON DELETE SET NULL"),
         ("tithe_offering_envelopes", "verification_code", "TEXT"),
         ("tithe_offering_envelopes", "payment_status", "TEXT NOT NULL DEFAULT 'RECORDED'")
     ]

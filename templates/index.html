@@ -645,8 +645,19 @@
           <div class="panel-card">
             <div class="panel-card-header">
               <div class="panel-card-title">Church Membership Roll</div>
-              <div style="display: flex; gap: 10px;">
-                <input type="text" id="member-search-input" class="form-control" placeholder="Search by name, member # or phone..." onkeyup="filterMembers()" style="width: 280px;">
+              <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                <input type="search" id="member-search-input" class="form-control" placeholder="Search name, member #, phone..." oninput="filterMembers()" style="width: 250px;">
+                <select id="member-status-filter" class="form-control" onchange="filterMembers()" style="width: 160px; display:none;">
+                  <option value="">All statuses</option>
+                  <option value="ACTIVE">Active</option>
+                  <option value="INACTIVE">Inactive</option>
+                  <option value="TRANSFERRED">Transferred</option>
+                  <option value="DECEASED">Deceased</option>
+                  <option value="DISFELLOWSHIPPED">Disfellowshipped</option>
+                </select>
+                <select id="member-department-filter" class="form-control" onchange="filterMembers()" style="width: 180px; display:none;">
+                  <option value="">All departments</option>
+                </select>
                 <button class="btn btn-primary" id="btn-add-member" onclick="openNewMemberModal()" style="display: none;">+ Add New Member</button>
               </div>
             </div>
@@ -669,6 +680,15 @@
         <!-- DEPARTMENTS & MINISTRIES SECTION -->
         <!-- ========================================== -->
         <section id="section-departments" class="app-section">
+          <div class="panel-card" style="margin-bottom: 20px;">
+            <div class="panel-card-header">
+              <div>
+                <div class="panel-card-title">Church Departments & Ministries</div>
+                <p style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">View ministry leaders and department activity.</p>
+              </div>
+              <button class="btn btn-primary btn-sm" id="btn-add-department" style="display: none;" onclick="openNewDepartmentModal()">+ Add Department</button>
+            </div>
+          </div>
           <div class="stats-grid" id="departments-grid">
             <!-- Dynamically populated department cards -->
           </div>
@@ -733,6 +753,17 @@
                 <div class="panel-card-title">Church Calendar & Programmes</div>
                 <button class="btn btn-primary btn-sm" id="btn-add-event" onclick="openNewEventModal()" style="display: none;">+ Schedule Event</button>
               </div>
+              <div style="display:flex;gap:8px;flex-wrap:wrap;padding:12px 16px;">
+                <input type="search" id="evt-search" class="form-control" placeholder="Search events..." oninput="filterEvents()" style="max-width:230px;">
+                <select id="evt-time-filter" class="form-control" onchange="filterEvents()" style="max-width:150px;">
+                  <option value="upcoming">Upcoming events</option>
+                  <option value="past">Past events</option>
+                  <option value="all">All events</option>
+                </select>
+                <select id="evt-department-filter" class="form-control" onchange="filterEvents()" style="max-width:200px;">
+                  <option value="">All departments</option>
+                </select>
+              </div>
               <div class="panel-card-body table-responsive" style="padding: 0;">
                 <table class="data-table">
                   <thead>
@@ -754,6 +785,20 @@
               <div class="panel-card-header">
                 <div class="panel-card-title">Sabbath Attendance Register</div>
                 <button class="btn btn-gold btn-sm" id="btn-record-attendance" onclick="openAttendanceModal()" style="display: none;">+ Record Attendance</button>
+              </div>
+              <div style="display:flex;gap:8px;flex-wrap:wrap;padding:12px 16px;">
+                <label style="font-size:12px;align-self:center;" for="att-date-from">From</label>
+                <input type="date" id="att-date-from" class="form-control" onchange="filterEvents()" style="max-width:150px;">
+                <label style="font-size:12px;align-self:center;" for="att-date-to">To</label>
+                <input type="date" id="att-date-to" class="form-control" onchange="filterEvents()" style="max-width:150px;">
+                <select id="att-service-filter" class="form-control" onchange="filterEvents()" style="max-width:190px;">
+                  <option value="">All services</option>
+                  <option value="DIVINE_SERVICE">Divine Service</option>
+                  <option value="SABBATH_SCHOOL">Sabbath School</option>
+                  <option value="YOUTH_SERVICE">Youth Service</option>
+                  <option value="MIDWEEK_PRAYER">Midweek Prayer</option>
+                  <option value="SPECIAL_EVENT">Special Event</option>
+                </select>
               </div>
               <div class="panel-card-body table-responsive" style="padding: 0;">
                 <table class="data-table">
@@ -1370,6 +1415,20 @@
     </div>
   </div>
 
+  <!-- Membership Status History Modal -->
+  <div class="modal-overlay" id="modal-member-history">
+    <div class="modal-container" style="max-width:560px;">
+      <div class="modal-header">
+        <h3 class="modal-title" id="member-history-title">Membership Status History</h3>
+        <button class="modal-close" type="button" onclick="closeModal('modal-member-history')" aria-label="Close">&times;</button>
+      </div>
+      <div class="modal-body" id="member-status-history"></div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline" onclick="closeModal('modal-member-history')">Close</button>
+      </div>
+    </div>
+  </div>
+
   <!-- New Event Modal -->
   <div class="modal-overlay" id="modal-event">
     <div class="modal-container">
@@ -1386,6 +1445,10 @@
           <div class="form-group">
             <label class="form-label">Location</label>
             <input type="text" id="evt-loc" class="form-control" placeholder="Main Sanctuary / Hall" required>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Description (Optional)</label>
+            <textarea id="evt-description" class="form-control" rows="2" maxlength="1000"></textarea>
           </div>
           <div class="form-row">
             <div class="form-group">
@@ -1437,6 +1500,12 @@
               <input type="date" id="att-date" class="form-control" required>
             </div>
           </div>
+          <div class="form-group">
+            <label class="form-label" for="att-event">Related event (Optional)</label>
+            <select id="att-event" class="form-control">
+              <option value="">General service (not event-linked)</option>
+            </select>
+          </div>
           <div class="form-row">
             <div class="form-group">
               <label class="form-label">Adults Count</label>
@@ -1453,6 +1522,10 @@
           </div>
           <div style="background-color: #f8fafc; padding: 12px; border-radius: 6px;">
             Total Congregation: <strong id="att-total-display" style="font-size: 16px; color: var(--sda-blue);">0</strong>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="att-notes">Notes (Optional)</label>
+            <textarea id="att-notes" class="form-control" rows="2" maxlength="500"></textarea>
           </div>
         </div>
         <div class="modal-footer">
@@ -1681,6 +1754,131 @@
       <div class="modal-footer">
         <button type="button" class="btn btn-outline" onclick="closeModal('modal-view-document')">Close</button>
         <button type="button" class="btn btn-primary" onclick="window.print()">Print</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Create Department Modal -->
+  <div class="modal-overlay" id="modal-department">
+    <div class="modal-container" style="max-width: 560px;">
+      <div class="modal-header">
+        <h3 class="modal-title">Create Church Department</h3>
+        <button class="modal-close" type="button" onclick="closeModal('modal-department')" aria-label="Close">&times;</button>
+      </div>
+      <form id="form-department" onsubmit="submitDepartment(event)">
+        <div class="modal-body">
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label" for="dept-name">Department name</label>
+              <input type="text" id="dept-name" class="form-control" maxlength="100" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="dept-code">Department code</label>
+              <input type="text" id="dept-code" class="form-control" maxlength="10" pattern="[A-Za-z0-9_-]{2,10}" required>
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="dept-description">Description (Optional)</label>
+            <textarea id="dept-description" class="form-control" rows="3" maxlength="500"></textarea>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="dept-leader">Department leader</label>
+            <select id="dept-leader" class="form-control" required>
+              <option value="">Loading eligible leaders...</option>
+            </select>
+            <span style="font-size: 11.5px; color: var(--text-muted);">The selected active member will be assigned the Department Leader role.</span>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline" onclick="closeModal('modal-department')">Cancel</button>
+          <button type="submit" class="btn btn-primary">Create Department</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Edit Department Modal -->
+  <div class="modal-overlay" id="modal-edit-department">
+    <div class="modal-container" style="max-width:560px;">
+      <div class="modal-header">
+        <h3 class="modal-title">Update Department</h3>
+        <button class="modal-close" type="button" onclick="closeModal('modal-edit-department')" aria-label="Close">&times;</button>
+      </div>
+      <form id="form-edit-department" onsubmit="submitDepartmentUpdate(event)">
+        <div class="modal-body">
+          <input type="hidden" id="edit-dept-id">
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label" for="edit-dept-name">Department name</label>
+              <input type="text" id="edit-dept-name" class="form-control" maxlength="100" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="edit-dept-code">Department code</label>
+              <input type="text" id="edit-dept-code" class="form-control" maxlength="10" pattern="[A-Za-z0-9_-]{2,10}" required>
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="edit-dept-description">Description</label>
+            <textarea id="edit-dept-description" class="form-control" rows="3" maxlength="500"></textarea>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="edit-dept-leader">Department leader</label>
+            <select id="edit-dept-leader" class="form-control">
+              <option value="">Loading eligible leaders...</option>
+            </select>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline" onclick="closeModal('modal-edit-department')">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save Changes</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Department Activities Modal -->
+  <div class="modal-overlay" id="modal-department-activities">
+    <div class="modal-container" style="max-width:680px;">
+      <div class="modal-header">
+        <h3 class="modal-title" id="activity-modal-title">Department Activities</h3>
+        <button class="modal-close" type="button" onclick="closeModal('modal-department-activities')" aria-label="Close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="activity-dept-id">
+        <div id="department-activities-list"></div>
+        <details id="activity-record-section">
+          <summary style="cursor:pointer;font-weight:600;color:var(--sda-blue-dark);">Record a department activity</summary>
+          <form id="form-department-activity" onsubmit="submitDepartmentActivity(event)" style="display:grid;gap:12px;margin-top:14px;">
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label" for="activity-title">Activity title</label>
+                <input type="text" id="activity-title" class="form-control" maxlength="120" required>
+              </div>
+              <div class="form-group">
+                <label class="form-label" for="activity-date">Date</label>
+                <input type="date" id="activity-date" class="form-control" required>
+              </div>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="activity-description">Description</label>
+              <textarea id="activity-description" class="form-control" rows="2" maxlength="1000"></textarea>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label" for="activity-participants">Participants</label>
+                <input type="number" id="activity-participants" class="form-control" min="0" value="0" required>
+              </div>
+              <div class="form-group">
+                <label class="form-label" for="activity-outcome">Outcome (Optional)</label>
+                <input type="text" id="activity-outcome" class="form-control" maxlength="1000">
+              </div>
+            </div>
+            <button type="submit" class="btn btn-primary">Save Activity</button>
+          </form>
+        </details>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline" onclick="closeModal('modal-department-activities')">Close</button>
       </div>
     </div>
   </div>

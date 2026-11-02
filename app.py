@@ -1,5 +1,6 @@
 import os
 import re
+import sqlite3
 import uuid
 import json
 from datetime import datetime, timedelta
@@ -1226,6 +1227,293 @@ def get_departments():
         result.append(d_dict)
     return jsonify(result)
 
+@app.route('/api/departments/<dept_id>', methods=['PATCH'])
+@login_required
+@roles_required('CHURCH_CLERK', 'PASTOR', 'FIRST_ELDER')
+def update_department(dept_id):
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({'error': 'A JSON object is required.'}), 400
+    if not data or not set(data).issubset({'name', 'code', 'description', 'leader_id'}):
+        return jsonify({'error': 'Provide department details or a leader assignment to update.'}), 400
+
+    conn = get_db_connection()
+    current = conn.execute(
+        '''
+        SELECT d.id, d.name, d.code, d.description, d.leader_id, u.full_name AS leader_name
+        FROM departments d
+        LEFT JOIN users u ON d.leader_id = u.id
+        WHERE d.id = ?
+        ''',
+        (dept_id,)
+    ).fetchone()
+    if not current:
+        conn.close()
+        return jsonify({'error': 'Department not found'}), 404
+
+    name = data.get('name', current['name'])
+    code = data.get('code', current['code'])
+    description = data.get('description', current['description'])
+    leader_id = data.get('leader_id', current['leader_id'])
+    if not isinstance(name, str) or not 2 <= len(name.strip()) <= 100:
+        conn.close()
+        return jsonify({'error': 'Department name must be between 2 and 100 characters.'}), 400
+    if not isinstance(code, str) or not re.fullmatch(r'[A-Za-z0-9_-]{2,10}', code.strip()):
+        conn.close()
+        return jsonify({'error': 'Department code must be 2 to 10 letters, numbers, underscores, or hyphens.'}), 400
+    if description is not None and not isinstance(description, str):
+        conn.close()
+        return jsonify({'error': 'Department description must be text.'}), 400
+    if description is not None and len(description.strip()) > 500:
+        conn.close()
+        return jsonify({'error': 'Department description must be 500 characters or fewer.'}), 400
+    if leader_id is not None and not isinstance(leader_id, str):
+        conn.close()
+        return jsonify({'error': 'Department leader selection is invalid.'}), 400
+
+    name = name.strip()
+    code = code.strip().upper()
+    description = description.strip() if description is not None else None
+    description = description or None
+    leader_id = leader_id.strip() if leader_id else None
+    if 'leader_id' in data and not leader_id:
+        leader_id = None
+
+    try:
+        conn.execute('BEGIN IMMEDIATE')
+        duplicate = conn.execute(
+            'SELECT 1 FROM departments WHERE id != ? AND (LOWER(name) = LOWER(?) OR code = ?)',
+            (dept_id, name, code)
+        ).fetchone()
+        if duplicate:
+            conn.rollback()
+            return jsonify({'error': 'A department with that name or code already exists.'}), 409
+
+        new_leader = None
+        if leader_id and leader_id != current['leader_id']:
+            new_leader = conn.execute('''
+                SELECT id, full_name, role, member_id, department_id FROM users
+                WHERE id = ? AND active = 1
+                  AND (
+                      role = 'DEPARTMENT_LEADER'
+                      OR (role = 'MEMBER' AND member_id IS NOT NULL)
+                  )
+                  AND NOT EXISTS (
+                      SELECT 1 FROM departments d
+                      WHERE d.leader_id = users.id AND d.id != ?
+                  )
+            ''', (leader_id, dept_id)).fetchone()
+            if not new_leader:
+                conn.rollback()
+                return jsonify({'error': 'Select an active member who is not leading another department.'}), 400
+
+        previous_leader = None
+        if current['leader_id'] and current['leader_id'] != leader_id:
+            previous_leader = conn.execute(
+                'SELECT id, full_name, role, department_id FROM users WHERE id = ?',
+                (current['leader_id'],)
+            ).fetchone()
+            if previous_leader:
+                conn.execute('''
+                    UPDATE users
+                    SET role = 'MEMBER',
+                        department_id = CASE WHEN department_id = ? THEN NULL ELSE department_id END
+                    WHERE id = ?
+                ''', (dept_id, previous_leader['id']))
+
+        conn.execute('''
+            UPDATE departments
+            SET name = ?, code = ?, description = ?, leader_id = ?
+            WHERE id = ?
+        ''', (name, code, description, leader_id, dept_id))
+        if new_leader:
+            conn.execute(
+                "UPDATE users SET role = 'DEPARTMENT_LEADER', department_id = ? WHERE id = ?",
+                (dept_id, new_leader['id'])
+            )
+            if new_leader['member_id']:
+                conn.execute(
+                    'UPDATE members SET department_id = ? WHERE id = ?',
+                    (dept_id, new_leader['member_id'])
+                )
+        conn.commit()
+    except sqlite3.IntegrityError:
+        conn.rollback()
+        return jsonify({'error': 'A department with that name or code already exists.'}), 409
+    finally:
+        conn.close()
+
+    create_audit_log(g.user['id'], 'UPDATE_DEPARTMENT', 'Department', dept_id, {
+        'name': name,
+        'code': code,
+        'previous_leader_id': current['leader_id'],
+        'leader_id': leader_id
+    })
+    if previous_leader:
+        create_audit_log(g.user['id'], 'REMOVE_DEPARTMENT_LEADER', 'User', previous_leader['id'], {
+            'department_id': dept_id,
+            'department_name': name
+        })
+    if new_leader:
+        create_audit_log(g.user['id'], 'ASSIGN_DEPARTMENT_LEADER', 'User', new_leader['id'], {
+            'department_id': dept_id,
+            'department_name': name,
+            'old_role': new_leader['role'],
+            'new_role': 'DEPARTMENT_LEADER'
+        })
+
+    result = dict(current)
+    result.update({
+        'name': name,
+        'code': code,
+        'description': description,
+        'leader_id': leader_id,
+        'leader_name': (
+            new_leader['full_name'] if new_leader
+            else current['leader_name'] if leader_id == current['leader_id']
+            else None
+        )
+    })
+    return jsonify(result)
+
+@app.route('/api/departments/leader-candidates', methods=['GET'])
+@login_required
+@roles_required('CHURCH_CLERK', 'PASTOR', 'FIRST_ELDER')
+def get_department_leader_candidates():
+    department_id = request.args.get('department_id', '').strip()
+    conn = get_db_connection()
+    if department_id and not conn.execute(
+        'SELECT 1 FROM departments WHERE id = ?', (department_id,)
+    ).fetchone():
+        conn.close()
+        return jsonify({'error': 'Department not found'}), 404
+
+    available_leader = '''
+        NOT EXISTS (
+            SELECT 1 FROM departments d
+            WHERE d.leader_id = u.id
+    '''
+    params = []
+    if department_id:
+        available_leader += ' AND d.id != ?'
+        params.append(department_id)
+    available_leader += ')'
+    candidates = conn.execute(f'''
+        SELECT u.id, u.full_name, u.email, u.role
+        FROM users u
+        WHERE u.active = 1
+          AND (
+              u.role = 'DEPARTMENT_LEADER'
+              OR (u.role = 'MEMBER' AND u.member_id IS NOT NULL)
+          )
+          AND {available_leader}
+        ORDER BY u.full_name ASC
+    ''', params).fetchall()
+    conn.close()
+    return jsonify([dict(candidate) for candidate in candidates])
+
+@app.route('/api/departments', methods=['POST'])
+@login_required
+@roles_required('CHURCH_CLERK', 'PASTOR', 'FIRST_ELDER')
+def create_department():
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({'error': 'A JSON object is required.'}), 400
+
+    name = data.get('name')
+    code = data.get('code')
+    description = data.get('description')
+    leader_id = data.get('leader_id')
+
+    if not isinstance(name, str) or not 2 <= len(name.strip()) <= 100:
+        return jsonify({'error': 'Department name must be between 2 and 100 characters.'}), 400
+    if not isinstance(code, str) or not re.fullmatch(r'[A-Za-z0-9_-]{2,10}', code.strip()):
+        return jsonify({'error': 'Department code must be 2 to 10 letters, numbers, underscores, or hyphens.'}), 400
+    if description is not None and not isinstance(description, str):
+        return jsonify({'error': 'Department description must be text.'}), 400
+    if description is not None and len(description.strip()) > 500:
+        return jsonify({'error': 'Department description must be 500 characters or fewer.'}), 400
+    if not isinstance(leader_id, str) or not leader_id.strip():
+        return jsonify({'error': 'Select a department leader.'}), 400
+
+    name = name.strip()
+    code = code.strip().upper()
+    description = description.strip() if description is not None else None
+    description = description or None
+    leader_id = leader_id.strip()
+    department_id = 'dept-' + str(uuid.uuid4())[:8]
+
+    conn = get_db_connection()
+    try:
+        conn.execute('BEGIN IMMEDIATE')
+        existing = conn.execute(
+            'SELECT id FROM departments WHERE LOWER(name) = LOWER(?) OR code = ?',
+            (name, code)
+        ).fetchone()
+        if existing:
+            conn.rollback()
+            return jsonify({'error': 'A department with that name or code already exists.'}), 409
+
+        leader = conn.execute('''
+            SELECT id, full_name, role, member_id, department_id FROM users
+            WHERE id = ? AND active = 1
+              AND (
+                  role = 'DEPARTMENT_LEADER'
+                  OR (role = 'MEMBER' AND member_id IS NOT NULL)
+              )
+              AND NOT EXISTS (
+                  SELECT 1 FROM departments d WHERE d.leader_id = users.id
+              )
+        ''', (leader_id,)).fetchone()
+        if not leader:
+            conn.rollback()
+            return jsonify({'error': 'Select an active member who is not already leading a department.'}), 400
+
+        conn.execute('''
+            INSERT INTO departments (id, name, code, description, leader_id, budget_allocation, budget_spent)
+            VALUES (?, ?, ?, ?, ?, 0, 0)
+        ''', (department_id, name, code, description, leader_id))
+        conn.execute('''
+            UPDATE users SET role = 'DEPARTMENT_LEADER', department_id = ?
+            WHERE id = ?
+        ''', (department_id, leader_id))
+        if leader['member_id']:
+            conn.execute(
+                'UPDATE members SET department_id = ? WHERE id = ?',
+                (department_id, leader['member_id'])
+            )
+        conn.commit()
+    except sqlite3.IntegrityError:
+        conn.rollback()
+        return jsonify({'error': 'A department with that name or code already exists.'}), 409
+    finally:
+        conn.close()
+
+    create_audit_log(g.user['id'], 'CREATE_DEPARTMENT', 'Department', department_id, {
+        'name': name,
+        'code': code,
+        'leader_id': leader_id,
+        'leader_name': leader['full_name']
+    })
+    create_audit_log(g.user['id'], 'ASSIGN_DEPARTMENT_LEADER', 'User', leader_id, {
+        'department_id': department_id,
+        'department_name': name,
+        'old_role': leader['role'],
+        'old_department_id': leader['department_id'],
+        'new_role': 'DEPARTMENT_LEADER'
+    })
+
+    return jsonify({
+        'id': department_id,
+        'name': name,
+        'code': code,
+        'description': description,
+        'leader_id': leader_id,
+        'leader_name': leader['full_name'],
+        'budget_allocation': 0,
+        'budget_spent': 0
+    }), 201
+
 @app.route('/api/mpesa/simulate', methods=['POST'])
 @login_required
 def simulate_mpesa():
@@ -1303,14 +1591,35 @@ def simulate_mpesa():
 @app.route('/api/events', methods=['GET'])
 @login_required
 def get_events():
+    department_id = request.args.get('department_id', '').strip()
+    search = request.args.get('search', '').strip()
+    when = request.args.get('when', 'all').strip().lower()
+    conditions = []
+    params = []
+    if department_id:
+        conditions.append('e.department_id = ?')
+        params.append(department_id)
+    if search:
+        conditions.append('(e.title LIKE ? OR e.location LIKE ? OR d.name LIKE ?)')
+        pattern = f'%{search}%'
+        params.extend([pattern, pattern, pattern])
+    if when == 'upcoming':
+        conditions.append("datetime(e.start_date) >= datetime('now', 'localtime')")
+    elif when == 'past':
+        conditions.append("datetime(e.start_date) < datetime('now', 'localtime')")
+    elif when != 'all':
+        return jsonify({'error': 'when must be upcoming, past, or all.'}), 400
+
+    where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ''
     conn = get_db_connection()
-    events = conn.execute('''
+    events = conn.execute(f'''
         SELECT e.*, d.name as department_name, u.full_name as coordinator_name
         FROM events e
         LEFT JOIN departments d ON e.department_id = d.id
         LEFT JOIN users u ON e.coordinator_id = u.id
+        {where_clause}
         ORDER BY e.start_date ASC
-    ''').fetchall()
+    ''', params).fetchall()
     conn.close()
     return jsonify([dict(e) for e in events])
 
@@ -1318,39 +1627,111 @@ def get_events():
 @login_required
 @roles_required('PASTOR', 'FIRST_ELDER', 'CHURCH_CLERK', 'DEPARTMENT_LEADER')
 def create_event():
-    data = request.get_json() or {}
-    title = data.get('title', '').strip()
-    description = data.get('description', '')
-    location = data.get('location', '').strip()
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({'error': 'A JSON object is required.'}), 400
+    title = data.get('title')
+    description = data.get('description')
+    location = data.get('location')
     start_date = data.get('start_date')
     end_date = data.get('end_date')
     dept_id = data.get('department_id')
 
-    if not title or not location or not start_date or not end_date:
-        return jsonify({'error': 'Title, location, start and end dates are required'}), 400
+    if not isinstance(title, str) or not title.strip() or len(title.strip()) > 120:
+        return jsonify({'error': 'Event title is required and must be 120 characters or fewer.'}), 400
+    if not isinstance(location, str) or not location.strip() or len(location.strip()) > 160:
+        return jsonify({'error': 'Event location is required and must be 160 characters or fewer.'}), 400
+    if description is not None and not isinstance(description, str):
+        return jsonify({'error': 'Event description must be text.'}), 400
+    if description is not None and len(description.strip()) > 1000:
+        return jsonify({'error': 'Event description must be 1000 characters or fewer.'}), 400
+    if not isinstance(start_date, str) or not isinstance(end_date, str):
+        return jsonify({'error': 'Valid start and end dates are required.'}), 400
+    try:
+        start_value = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
+        end_value = datetime.fromisoformat(end_date.replace('Z', '+00:00'))
+    except ValueError:
+        return jsonify({'error': 'Start and end dates must be valid ISO date/time values.'}), 400
+    if (start_value.utcoffset() is not None) != (end_value.utcoffset() is not None):
+        return jsonify({'error': 'Start and end dates must use the same time zone format.'}), 400
+    if start_value.utcoffset() is not None:
+        start_value = start_value.astimezone().replace(tzinfo=None)
+        end_value = end_value.astimezone().replace(tzinfo=None)
+    if end_value < start_value:
+        return jsonify({'error': 'Event end date must be on or after its start date.'}), 400
+    if dept_id is not None and (not isinstance(dept_id, str) or not dept_id.strip()):
+        return jsonify({'error': 'Department selection is invalid.'}), 400
+    dept_id = dept_id.strip() if dept_id else None
+    if g.user['role'] == 'DEPARTMENT_LEADER' and dept_id and dept_id != g.user.get('department_id'):
+        return jsonify({'error': 'Department leaders may only schedule events for their own department.'}), 403
+
+    title = title.strip()
+    location = location.strip()
+    description = description.strip() if description else None
+    normalized_start = start_value.strftime('%Y-%m-%d %H:%M:%S')
+    normalized_end = end_value.strftime('%Y-%m-%d %H:%M:%S')
 
     conn = get_db_connection()
+    if dept_id and not conn.execute('SELECT 1 FROM departments WHERE id = ?', (dept_id,)).fetchone():
+        conn.close()
+        return jsonify({'error': 'Department not found.'}), 404
     evt_id = 'evt-' + str(uuid.uuid4())[:8]
     conn.execute('''
         INSERT INTO events (id, title, description, department_id, coordinator_id, location, start_date, end_date)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    ''', (evt_id, title, description, dept_id, g.user['id'], location, start_date, end_date))
+    ''', (evt_id, title, description, dept_id, g.user['id'], location, normalized_start, normalized_end))
     conn.commit()
     conn.close()
 
-    create_audit_log(g.user['id'], 'CREATE_EVENT', 'Event', evt_id, {'title': title})
+    create_audit_log(g.user['id'], 'CREATE_EVENT', 'Event', evt_id, {
+        'title': title,
+        'department_id': dept_id,
+        'start_date': normalized_start,
+        'end_date': normalized_end
+    })
     return jsonify({'id': evt_id, 'title': title}), 201
 
 @app.route('/api/attendance', methods=['GET'])
 @login_required
 def get_attendance():
+    date_from = request.args.get('date_from', '').strip()
+    date_to = request.args.get('date_to', '').strip()
+    service_type = request.args.get('service_type', '').strip()
+    event_id = request.args.get('event_id', '').strip()
+    conditions = []
+    params = []
+    for label, value in (('date_from', date_from), ('date_to', date_to)):
+        if value:
+            try:
+                parsed_date = datetime.strptime(value, '%Y-%m-%d')
+            except ValueError:
+                return jsonify({'error': f'{label} must use YYYY-MM-DD format.'}), 400
+            if parsed_date.strftime('%Y-%m-%d') != value:
+                return jsonify({'error': f'{label} must use YYYY-MM-DD format.'}), 400
+    if date_from and date_to and date_from > date_to:
+        return jsonify({'error': 'date_from must be on or before date_to.'}), 400
+    if date_from:
+        conditions.append('a.date >= ?')
+        params.append(date_from)
+    if date_to:
+        conditions.append('a.date <= ?')
+        params.append(date_to)
+    if service_type:
+        conditions.append('a.service_type = ?')
+        params.append(service_type)
+    if event_id:
+        conditions.append('a.event_id = ?')
+        params.append(event_id)
+    where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ''
     conn = get_db_connection()
-    records = conn.execute('''
-        SELECT a.*, u.full_name as recorded_by_name
+    records = conn.execute(f'''
+        SELECT a.*, u.full_name as recorded_by_name, e.title as event_title
         FROM attendance a
         LEFT JOIN users u ON a.recorded_by_id = u.id
+        LEFT JOIN events e ON a.event_id = e.id
+        {where_clause}
         ORDER BY a.date DESC LIMIT 50
-    ''').fetchall()
+    ''', params).fetchall()
     conn.close()
     return jsonify([dict(r) for r in records])
 
@@ -1358,24 +1739,66 @@ def get_attendance():
 @login_required
 @roles_required('CHURCH_CLERK', 'PASTOR', 'FIRST_ELDER')
 def record_attendance():
-    data = request.get_json() or {}
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({'error': 'A JSON object is required.'}), 400
     service_type = data.get('service_type', 'DIVINE_SERVICE')
     date_val = data.get('date', datetime.now().strftime('%Y-%m-%d'))
-    adults = int(data.get('adult_count', 0))
-    children = int(data.get('children_count', 0))
-    visitors = int(data.get('visitors_count', 0))
+    event_id = data.get('event_id') or None
+    allowed_services = ['DIVINE_SERVICE', 'SABBATH_SCHOOL', 'YOUTH_SERVICE', 'MIDWEEK_PRAYER', 'SPECIAL_EVENT']
+    if not isinstance(service_type, str) or service_type not in allowed_services:
+        return jsonify({'error': 'Select a valid service type.'}), 400
+    if not isinstance(date_val, str):
+        return jsonify({'error': 'Attendance date must use YYYY-MM-DD format.'}), 400
+    try:
+        parsed_date = datetime.strptime(date_val, '%Y-%m-%d')
+    except ValueError:
+        return jsonify({'error': 'Attendance date must use YYYY-MM-DD format.'}), 400
+    if parsed_date.strftime('%Y-%m-%d') != date_val:
+        return jsonify({'error': 'Attendance date must use YYYY-MM-DD format.'}), 400
+    count_values = (data.get('adult_count', 0), data.get('children_count', 0), data.get('visitors_count', 0))
+    if any(isinstance(value, bool) for value in count_values):
+        return jsonify({'error': 'Attendance counts must be whole numbers.'}), 400
+    try:
+        adults, children, visitors = (int(value) for value in count_values)
+    except (TypeError, ValueError):
+        return jsonify({'error': 'Attendance counts must be whole numbers.'}), 400
+    if any(count < 0 for count in (adults, children, visitors)):
+        return jsonify({'error': 'Attendance counts cannot be negative.'}), 400
+    notes = data.get('notes')
+    if notes is not None and not isinstance(notes, str):
+        return jsonify({'error': 'Attendance notes must be text.'}), 400
+    if notes and len(notes) > 500:
+        return jsonify({'error': 'Attendance notes must be 500 characters or fewer.'}), 400
+    if event_id is not None and not isinstance(event_id, str):
+        return jsonify({'error': 'Event selection is invalid.'}), 400
     total = adults + children + visitors
 
     conn = get_db_connection()
+    if event_id:
+        event = conn.execute(
+            "SELECT 1 FROM events WHERE id = ? AND date(?) BETWEEN date(start_date) AND date(end_date)",
+            (event_id, date_val)
+        ).fetchone()
+        if not event:
+            event_exists = conn.execute('SELECT 1 FROM events WHERE id = ?', (event_id,)).fetchone()
+            conn.close()
+            if not event_exists:
+                return jsonify({'error': 'Event not found.'}), 404
+            return jsonify({'error': 'Attendance date must fall within the linked event dates.'}), 400
     att_id = str(uuid.uuid4())
     conn.execute('''
-        INSERT INTO attendance (id, service_type, date, adult_count, children_count, visitors_count, total_count, notes, recorded_by_id)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ''', (att_id, service_type, date_val, adults, children, visitors, total, data.get('notes'), g.user['id']))
+        INSERT INTO attendance (id, event_id, service_type, date, adult_count, children_count, visitors_count, total_count, notes, recorded_by_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ''', (att_id, event_id, service_type, date_val, adults, children, visitors, total, notes, g.user['id']))
     conn.commit()
     conn.close()
 
-    create_audit_log(g.user['id'], 'RECORD_ATTENDANCE', 'Attendance', att_id, {'service': service_type, 'total': total})
+    create_audit_log(g.user['id'], 'RECORD_ATTENDANCE', 'Attendance', att_id, {
+        'service': service_type,
+        'event_id': event_id,
+        'total': total
+    })
     return jsonify({'id': att_id, 'total_count': total, 'date': date_val}), 201
 
 @app.route('/api/finance/reports/sda-monthly', methods=['GET'])
@@ -1723,6 +2146,9 @@ def delete_document(doc_id):
 @login_required
 def get_dept_activities(dept_id):
     conn = get_db_connection()
+    if not conn.execute('SELECT 1 FROM departments WHERE id = ?', (dept_id,)).fetchone():
+        conn.close()
+        return jsonify({'error': 'Department not found'}), 404
     activities = conn.execute('''
         SELECT a.*, u.full_name as recorded_by_name, d.name as department_name
         FROM departmental_activities a
@@ -1738,22 +2164,51 @@ def get_dept_activities(dept_id):
 @login_required
 @roles_required('PASTOR', 'FIRST_ELDER', 'CHURCH_CLERK', 'DEPARTMENT_LEADER')
 def create_dept_activity(dept_id):
-    data = request.get_json() or {}
-    title = data.get('title', '').strip()
-    description = data.get('description', '').strip()
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({'error': 'A JSON object is required.'}), 400
+    title = data.get('title')
+    description = data.get('description', '')
     activity_date = data.get('activity_date', datetime.now().strftime('%Y-%m-%d'))
-    participants = int(data.get('participants_count', 0))
-    outcome = data.get('outcome', '').strip()
-
-    if not title:
-        return jsonify({'error': 'Activity title is required'}), 400
+    outcome = data.get('outcome', '')
+    if not isinstance(title, str) or not title.strip() or len(title.strip()) > 120:
+        return jsonify({'error': 'Activity title is required and must be 120 characters or fewer.'}), 400
+    if not isinstance(description, str) or len(description) > 1000:
+        return jsonify({'error': 'Activity description must be text of 1000 characters or fewer.'}), 400
+    if not isinstance(outcome, str) or len(outcome) > 1000:
+        return jsonify({'error': 'Activity outcome must be text of 1000 characters or fewer.'}), 400
+    if not isinstance(activity_date, str):
+        return jsonify({'error': 'Activity date must use YYYY-MM-DD format.'}), 400
+    try:
+        parsed_date = datetime.strptime(activity_date, '%Y-%m-%d')
+    except ValueError:
+        return jsonify({'error': 'Activity date must use YYYY-MM-DD format.'}), 400
+    if parsed_date.strftime('%Y-%m-%d') != activity_date:
+        return jsonify({'error': 'Activity date must use YYYY-MM-DD format.'}), 400
+    participants_value = data.get('participants_count', 0)
+    if isinstance(participants_value, bool):
+        return jsonify({'error': 'Participant count must be a whole number.'}), 400
+    try:
+        participants = int(participants_value)
+    except (TypeError, ValueError):
+        return jsonify({'error': 'Participant count must be a whole number.'}), 400
+    if participants < 0:
+        return jsonify({'error': 'Participant count cannot be negative.'}), 400
 
     conn = get_db_connection()
-    dept = conn.execute('SELECT id, name FROM departments WHERE id = ?', (dept_id,)).fetchone()
+    dept = conn.execute('SELECT id, name, leader_id FROM departments WHERE id = ?', (dept_id,)).fetchone()
     if not dept:
         conn.close()
         return jsonify({'error': 'Department not found'}), 404
+    if g.user['role'] == 'DEPARTMENT_LEADER' and (
+        dept['leader_id'] != g.user['id'] or g.user.get('department_id') != dept_id
+    ):
+        conn.close()
+        return jsonify({'error': 'Department leaders may only record activities for their own department.'}), 403
 
+    title = title.strip()
+    description = description.strip() or None
+    outcome = outcome.strip() or None
     act_id = 'act-' + str(uuid.uuid4())[:8]
     conn.execute('''
         INSERT INTO departmental_activities (id, department_id, title, description, activity_date, participants_count, outcome, recorded_by_id)
@@ -1772,13 +2227,17 @@ def create_dept_activity(dept_id):
 @login_required
 @roles_required('PASTOR', 'FIRST_ELDER', 'CHURCH_CLERK')
 def update_member_status(member_id):
-    data = request.get_json() or {}
-    new_status = data.get('status', '').strip()
-    reason = data.get('reason', '').strip()
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({'error': 'A JSON object is required.'}), 400
+    new_status = data.get('status')
+    reason = data.get('reason', '')
 
     valid_statuses = ['ACTIVE', 'INACTIVE', 'TRANSFERRED', 'DECEASED', 'DISFELLOWSHIPPED']
-    if new_status not in valid_statuses:
+    if not isinstance(new_status, str) or new_status not in valid_statuses:
         return jsonify({'error': f'Invalid status. Must be one of: {", ".join(valid_statuses)}'}), 400
+    if not isinstance(reason, str) or len(reason) > 500:
+        return jsonify({'error': 'Status change reason must be text of 500 characters or fewer.'}), 400
 
     conn = get_db_connection()
     member = conn.execute('SELECT * FROM members WHERE id = ?', (member_id,)).fetchone()
@@ -1786,6 +2245,11 @@ def update_member_status(member_id):
         conn.close()
         return jsonify({'error': 'Member not found'}), 404
 
+    if member['status'] == new_status:
+        conn.close()
+        return jsonify({'message': 'Member already has that status.', 'status': new_status})
+
+    reason = reason.strip()
     hist_id = 'msh-' + str(uuid.uuid4())[:8]
     conn.execute('''
         INSERT INTO member_status_history (id, member_id, old_status, new_status, reason, changed_by_id)
@@ -1803,6 +2267,9 @@ def update_member_status(member_id):
 @roles_required('PASTOR', 'FIRST_ELDER', 'CHURCH_CLERK', 'AUDITOR')
 def get_member_status_history(member_id):
     conn = get_db_connection()
+    if not conn.execute('SELECT 1 FROM members WHERE id = ?', (member_id,)).fetchone():
+        conn.close()
+        return jsonify({'error': 'Member not found'}), 404
     history = conn.execute('''
         SELECT h.*, u.full_name as changed_by_name
         FROM member_status_history h

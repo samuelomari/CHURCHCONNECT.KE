@@ -11,6 +11,8 @@ const state = {
   fundCategories: [],
   members: [],
   departments: [],
+  events: [],
+  attendance: [],
   chartInstance: null,
   hasMeetingAccess: false
 };
@@ -20,6 +22,14 @@ const formatKES = (val) => {
   const num = Number(val) || 0;
   return 'KES ' + num.toLocaleString('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 };
+
+const escapeHtml = (value) => String(value).replace(/[&<>"']/g, (char) => ({
+  '&': '&amp;',
+  '<': '&lt;',
+  '>': '&gt;',
+  '"': '&quot;',
+  "'": '&#39;'
+}[char]));
 
 // Toast Notifications
 const showToast = (message, type = 'info') => {
@@ -493,31 +503,43 @@ const populateModalDropdowns = () => {
   const vchSelect = document.getElementById('vch-dept');
   if (vchSelect) {
     vchSelect.innerHTML = '<option value="">-- Select Department --</option>' +
-      state.departments.map(d => `<option value="${d.id}">${d.name} (${d.code})</option>`).join('');
+    state.departments.map(d => `<option value="${escapeHtml(d.id)}">${escapeHtml(d.name)} (${escapeHtml(d.code)})</option>`).join('');
   }
 
   const memSelect = document.getElementById('mem-dept');
   if (memSelect) {
     memSelect.innerHTML = '<option value="">-- None / General --</option>' +
-      state.departments.map(d => `<option value="${d.id}">${d.name}</option>`).join('');
+      state.departments.map(d => `<option value="${escapeHtml(d.id)}">${escapeHtml(d.name)}</option>`).join('');
   }
 
   const regDeptSelect = document.getElementById('reg-dept');
   if (regDeptSelect) {
     regDeptSelect.innerHTML = '<option value="">-- General Congregation --</option>' +
-      state.departments.map(d => `<option value="${d.id}">${d.name}</option>`).join('');
+      state.departments.map(d => `<option value="${escapeHtml(d.id)}">${escapeHtml(d.name)}</option>`).join('');
   }
 
   const envMemSelect = document.getElementById('env-member-id');
   if (envMemSelect) {
     envMemSelect.innerHTML = '<option value="">-- Non-Member / Visitor --</option>' +
-      state.members.map(m => `<option value="${m.id}">${m.member_number} - ${m.first_name} ${m.last_name}</option>`).join('');
+      state.members.map(m => `<option value="${escapeHtml(m.id)}">${escapeHtml(m.member_number)} - ${escapeHtml(m.first_name)} ${escapeHtml(m.last_name)}</option>`).join('');
   }
 
   const evtDeptSelect = document.getElementById('evt-dept');
   if (evtDeptSelect) {
     evtDeptSelect.innerHTML = '<option value="">-- General Church Programme --</option>' +
-      state.departments.map(d => `<option value="${d.id}">${d.name}</option>`).join('');
+      state.departments.map(d => `<option value="${escapeHtml(d.id)}">${escapeHtml(d.name)}</option>`).join('');
+  }
+
+  const memberDepartmentFilter = document.getElementById('member-department-filter');
+  if (memberDepartmentFilter) {
+    memberDepartmentFilter.innerHTML = '<option value="">All departments</option>' +
+      state.departments.map(d => `<option value="${escapeHtml(d.id)}">${escapeHtml(d.name)}</option>`).join('');
+  }
+
+  const attendanceEvent = document.getElementById('att-event');
+  if (attendanceEvent) {
+    attendanceEvent.innerHTML = '<option value="">General service (not event-linked)</option>' +
+      state.events.map(event => `<option value="${escapeHtml(event.id)}">${escapeHtml(event.title)} — ${escapeHtml(event.start_date)}</option>`).join('');
   }
 };
 
@@ -1157,7 +1179,14 @@ const loadMembers = async () => {
   try {
     const members = await api('/api/members');
     state.members = members;
-    renderMembersTable(members);
+    const canManageStatus = ['CHURCH_ADMIN', 'PASTOR', 'FIRST_ELDER', 'CHURCH_CLERK'].includes(state.currentUser?.role);
+    const addMemberBtn = document.getElementById('btn-add-member');
+    if (addMemberBtn) addMemberBtn.style.display = canManageStatus ? 'inline-flex' : 'none';
+    const statusFilter = document.getElementById('member-status-filter');
+    const departmentFilter = document.getElementById('member-department-filter');
+    if (statusFilter) statusFilter.style.display = canManageStatus ? 'inline-block' : 'none';
+    if (departmentFilter) departmentFilter.style.display = canManageStatus ? 'inline-block' : 'none';
+    filterMembers();
   } catch (err) {
     console.error('Failed to load members:', err);
   }
@@ -1171,6 +1200,7 @@ const renderMembersTable = (members) => {
   const isOfficer = ['CHURCH_ADMIN', 'PASTOR', 'FIRST_ELDER', 'CHURCH_CLERK', 'HEAD_TREASURER', 'ASSISTANT_TREASURER'].includes(state.currentUser?.role);
 
   const canViewContributions = ['HEAD_TREASURER', 'ASSISTANT_TREASURER', 'PASTOR', 'FIRST_ELDER', 'AUDITOR', 'AUTHORIZED_ELDER_READONLY'].includes(state.currentUser?.role);
+  const canManageStatus = ['CHURCH_ADMIN', 'PASTOR', 'FIRST_ELDER', 'CHURCH_CLERK'].includes(state.currentUser?.role);
 
   if (isOfficer) {
     headerRow.innerHTML = `
@@ -1182,21 +1212,23 @@ const renderMembersTable = (members) => {
       <th>Baptism Details</th>
       <th>Department</th>
       <th>Status</th>
+      ${canManageStatus ? '<th>Membership actions</th>' : ''}
       ${canViewContributions ? '<th>Contributions</th>' : ''}
     `;
     tbody.innerHTML = members.map(m => `
       <tr>
-        <td><strong>${m.member_number}</strong></td>
-        <td>${m.first_name} ${m.last_name}</td>
-        <td>${m.phone || '-'}</td>
-        <td>${m.email || '-'}</td>
-        <td><span class="badge ${m.gender === 'MALE' ? 'badge-info' : 'badge-secondary'}">${m.gender}</span></td>
+        <td><strong>${escapeHtml(m.member_number)}</strong></td>
+        <td>${escapeHtml(m.first_name)} ${escapeHtml(m.last_name)}</td>
+        <td>${escapeHtml(m.phone || '-')}</td>
+        <td>${escapeHtml(m.email || '-')}</td>
+        <td><span class="badge ${m.gender === 'MALE' ? 'badge-info' : 'badge-secondary'}">${escapeHtml(m.gender)}</span></td>
         <td style="font-size: 11.5px;">
-          ${m.baptism_date ? `Baptized: ${m.baptism_date.split(' ')[0]}<br><small style="color: var(--text-muted);">${m.baptism_church || ''}</small>` : '<span style="color: var(--text-muted);">Unbaptized</span>'}
+          ${m.baptism_date ? `Baptized: ${escapeHtml(m.baptism_date.split(' ')[0])}<br><small style="color: var(--text-muted);">${escapeHtml(m.baptism_church || '')}</small>` : '<span style="color: var(--text-muted);">Unbaptized</span>'}
         </td>
-        <td>${m.department_name || 'General'}</td>
-        <td><span class="badge badge-success">${m.status}</span></td>
-        ${canViewContributions ? `<td><button class="btn btn-outline btn-sm" onclick="loadMemberContributions('${m.id}', '${(m.first_name + ' ' + m.last_name).replace(/'/g, "&#39;")}')">View</button></td>` : ''}
+        <td>${escapeHtml(m.department_name || 'General')}</td>
+        <td><span class="badge ${m.status === 'ACTIVE' ? 'badge-success' : 'badge-secondary'}">${escapeHtml(m.status)}</span></td>
+        ${canManageStatus ? `<td><div style="display:flex;gap:6px;align-items:center;"><select class="form-control" style="min-width:135px;" aria-label="Update membership status for ${escapeHtml(m.first_name)} ${escapeHtml(m.last_name)}" data-member-id="${escapeHtml(m.id)}" data-current-status="${escapeHtml(m.status)}" onchange="updateMemberStatus(this)">${['ACTIVE', 'INACTIVE', 'TRANSFERRED', 'DECEASED', 'DISFELLOWSHIPPED'].map(status => `<option value="${status}" ${m.status === status ? 'selected' : ''}>${status.replace('_', ' ')}</option>`).join('')}</select><button type="button" class="btn btn-outline btn-sm" onclick="loadMemberStatusHistory('${escapeHtml(m.id)}')">History</button></div></td>` : ''}
+        ${canViewContributions ? `<td><button class="btn btn-outline btn-sm" onclick="loadMemberContributions('${escapeHtml(m.id)}')">View</button></td>` : ''}
       </tr>
     `).join('');
   } else {
@@ -1210,28 +1242,72 @@ const renderMembersTable = (members) => {
     `;
     tbody.innerHTML = members.map(m => `
       <tr>
-        <td><strong>${m.member_number}</strong></td>
-        <td>${m.first_name} ${m.last_name}</td>
-        <td><span class="badge ${m.gender === 'MALE' ? 'badge-info' : 'badge-secondary'}">${m.gender}</span></td>
-        <td>${m.department_name || 'General'}</td>
-        <td><span class="badge badge-success">${m.status}</span></td>
+        <td><strong>${escapeHtml(m.member_number)}</strong></td>
+        <td>${escapeHtml(m.first_name)} ${escapeHtml(m.last_name)}</td>
+        <td><span class="badge ${m.gender === 'MALE' ? 'badge-info' : 'badge-secondary'}">${escapeHtml(m.gender)}</span></td>
+        <td>${escapeHtml(m.department_name || 'General')}</td>
+        <td><span class="badge badge-success">${escapeHtml(m.status)}</span></td>
       </tr>
     `).join('');
   }
 };
 
 const filterMembers = () => {
-  const q = document.getElementById('member-search-input').value.toLowerCase();
+  const q = (document.getElementById('member-search-input')?.value || '').trim().toLowerCase();
+  const selectedStatus = document.getElementById('member-status-filter')?.value || '';
+  const selectedDepartment = document.getElementById('member-department-filter')?.value || '';
   const filtered = state.members.filter(m => 
-    m.first_name.toLowerCase().includes(q) ||
-    m.last_name.toLowerCase().includes(q) ||
-    m.member_number.toLowerCase().includes(q) ||
-    (m.phone && m.phone.includes(q))
+    (!selectedStatus || m.status === selectedStatus) &&
+    (!selectedDepartment || m.department_id === selectedDepartment) &&
+    (!q || [m.first_name, m.last_name, m.member_number, m.phone, m.email, m.department_name]
+      .some(value => String(value || '').toLowerCase().includes(q)))
   );
   renderMembersTable(filtered);
 };
 
-const loadMemberContributions = async (memberId, memberName) => {
+const updateMemberStatus = async (select) => {
+  const memberId = select.dataset.memberId;
+  const oldStatus = select.dataset.currentStatus;
+  if (!memberId || select.value === oldStatus) return;
+  const reason = prompt(`Reason for changing status from ${oldStatus} to ${select.value.replace('_', ' ')} (optional):`);
+  if (reason === null) {
+    select.value = oldStatus;
+    return;
+  }
+  try {
+    await api(`/api/members/${encodeURIComponent(memberId)}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status: select.value, reason: reason.trim() })
+    });
+    showToast('Membership status updated and recorded in history.', 'success');
+    await loadMembers();
+  } catch (err) {
+    select.value = oldStatus;
+  }
+};
+
+const loadMemberStatusHistory = async (memberId) => {
+  try {
+    const history = await api(`/api/members/${encodeURIComponent(memberId)}/status-history`);
+    const member = state.members.find(item => item.id === memberId);
+    document.getElementById('member-history-title').innerText =
+      `Status History — ${member ? `${member.first_name} ${member.last_name}` : 'Church Member'}`;
+    document.getElementById('member-status-history').innerHTML = history.length
+      ? history.map(entry => `
+        <article class="panel-card" style="padding:12px;margin-bottom:8px;">
+          <strong>${escapeHtml(entry.old_status || 'New')} → ${escapeHtml(entry.new_status)}</strong>
+          <p style="font-size:12px;color:var(--text-muted);margin-top:5px;">
+            ${escapeHtml(entry.created_at)} · ${escapeHtml(entry.changed_by_name || 'Church leadership')}
+          </p>
+          ${entry.reason ? `<p style="font-size:13px;margin-top:6px;">${escapeHtml(entry.reason)}</p>` : ''}
+        </article>
+      `).join('')
+      : '<p style="font-size:13px;color:var(--text-muted);">No membership status changes have been recorded.</p>';
+    openModal('modal-member-history');
+  } catch (err) {}
+};
+
+const loadMemberContributions = async (memberId) => {
   try {
     const data = await api(`/api/finance/members/${memberId}/contributions`);
     const m = data.member;
@@ -1625,10 +1701,168 @@ const submitAsset = async (e) => {
 // ==========================================
 // 12. DEPARTMENTS & MINISTRIES
 // ==========================================
+const openNewDepartmentModal = async () => {
+  const form = document.getElementById('form-department');
+  const leaderSelect = document.getElementById('dept-leader');
+  form.reset();
+  leaderSelect.disabled = true;
+  leaderSelect.innerHTML = '<option value="">Loading eligible leaders...</option>';
+  openModal('modal-department');
+
+  try {
+    const candidates = await api('/api/departments/leader-candidates');
+    leaderSelect.innerHTML = candidates.length
+      ? '<option value="">-- Select a leader --</option>' +
+        candidates.map(candidate =>
+          `<option value="${escapeHtml(candidate.id)}">${escapeHtml(candidate.full_name)}${candidate.role === 'DEPARTMENT_LEADER' ? ' (Current department leader)' : ''}</option>`
+        ).join('')
+      : '<option value="">No eligible members found</option>';
+    leaderSelect.disabled = candidates.length === 0;
+  } catch (err) {
+    leaderSelect.innerHTML = '<option value="">Unable to load leaders</option>';
+  }
+};
+
+const submitDepartment = async (event) => {
+  event.preventDefault();
+  const payload = {
+    name: document.getElementById('dept-name').value.trim(),
+    code: document.getElementById('dept-code').value.trim(),
+    description: document.getElementById('dept-description').value.trim(),
+    leader_id: document.getElementById('dept-leader').value
+  };
+
+  try {
+    await api('/api/departments', {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    });
+    closeModal('modal-department');
+    document.getElementById('form-department').reset();
+    showToast('Department created and leader assigned.', 'success');
+    await loadCommonData();
+    await loadDepartments();
+  } catch (err) {}
+};
+
+const openEditDepartmentModal = async (departmentId) => {
+  const department = state.departments.find(item => item.id === departmentId);
+  if (!department) return;
+  document.getElementById('edit-dept-id').value = department.id;
+  document.getElementById('edit-dept-name').value = department.name;
+  document.getElementById('edit-dept-code').value = department.code;
+  document.getElementById('edit-dept-description').value = department.description || '';
+  const leaderSelect = document.getElementById('edit-dept-leader');
+  const submitButton = document.querySelector('#form-edit-department button[type="submit"]');
+  leaderSelect.disabled = true;
+  submitButton.disabled = true;
+  leaderSelect.innerHTML = '<option value="">Loading eligible leaders...</option>';
+  openModal('modal-edit-department');
+
+  try {
+    const candidates = await api(`/api/departments/leader-candidates?department_id=${encodeURIComponent(departmentId)}`);
+    leaderSelect.innerHTML = '<option value="">No leader assigned</option>' +
+      candidates.map(candidate =>
+        `<option value="${escapeHtml(candidate.id)}">${escapeHtml(candidate.full_name)}${candidate.id === department.leader_id ? ' (Current leader)' : ''}</option>`
+      ).join('');
+    leaderSelect.value = department.leader_id || '';
+    leaderSelect.disabled = false;
+    submitButton.disabled = false;
+  } catch (err) {
+    leaderSelect.innerHTML = '<option value="">Unable to load leaders</option>';
+  }
+};
+
+const submitDepartmentUpdate = async (event) => {
+  event.preventDefault();
+  const departmentId = document.getElementById('edit-dept-id').value;
+  const payload = {
+    name: document.getElementById('edit-dept-name').value.trim(),
+    code: document.getElementById('edit-dept-code').value.trim(),
+    description: document.getElementById('edit-dept-description').value.trim(),
+    leader_id: document.getElementById('edit-dept-leader').value || null
+  };
+  try {
+    await api(`/api/departments/${encodeURIComponent(departmentId)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload)
+    });
+    closeModal('modal-edit-department');
+    showToast('Department details and leadership updated.', 'success');
+    await loadCommonData();
+    await loadDepartments();
+  } catch (err) {}
+};
+
+const openDepartmentActivities = async (departmentId, startRecording = false) => {
+  const department = state.departments.find(item => item.id === departmentId);
+  if (!department) return;
+  document.getElementById('activity-dept-id').value = department.id;
+  document.getElementById('activity-modal-title').innerText = `${department.name} Activities`;
+  const canRecord = ['CHURCH_ADMIN', 'PASTOR', 'FIRST_ELDER', 'CHURCH_CLERK'].includes(state.currentUser?.role) ||
+    (state.currentUser?.role === 'DEPARTMENT_LEADER' && state.currentUser.department_id === department.id);
+  document.getElementById('form-department-activity').reset();
+  document.getElementById('activity-record-section').style.display = canRecord ? 'block' : 'none';
+  document.getElementById('activity-date').value = new Date().toISOString().slice(0, 10);
+  document.getElementById('activity-record-section').open = startRecording && canRecord;
+  openModal('modal-department-activities');
+  await loadDepartmentActivities(department.id);
+};
+
+const loadDepartmentActivities = async (departmentId) => {
+  try {
+    const activities = await api(`/api/departments/${encodeURIComponent(departmentId)}/activities`);
+    const list = document.getElementById('department-activities-list');
+    list.innerHTML = activities.length ? activities.map(activity => `
+      <article class="panel-card" style="padding: 14px; margin-bottom: 10px;">
+        <div style="display:flex;justify-content:space-between;gap:12px;">
+          <strong>${escapeHtml(activity.title)}</strong>
+          <span class="badge badge-info">${escapeHtml(activity.activity_date)}</span>
+        </div>
+        <p style="font-size:13px;margin-top:8px;">${escapeHtml(activity.description || 'No description provided.')}</p>
+        <p style="font-size:12px;color:var(--text-muted);margin-top:6px;">
+          Participants: ${Number(activity.participants_count) || 0}
+          ${activity.recorded_by_name ? ` · Recorded by ${escapeHtml(activity.recorded_by_name)}` : ''}
+        </p>
+        ${activity.outcome ? `<p style="font-size:12px;margin-top:6px;"><strong>Outcome:</strong> ${escapeHtml(activity.outcome)}</p>` : ''}
+      </article>
+    `).join('') : '<p style="color:var(--text-muted);font-size:13px;">No activities have been recorded for this department.</p>';
+  } catch (err) {
+    document.getElementById('department-activities-list').innerHTML =
+      '<p style="color:var(--danger);font-size:13px;">Unable to load department activities.</p>';
+  }
+};
+
+const submitDepartmentActivity = async (event) => {
+  event.preventDefault();
+  const departmentId = document.getElementById('activity-dept-id').value;
+  const payload = {
+    title: document.getElementById('activity-title').value.trim(),
+    activity_date: document.getElementById('activity-date').value,
+    participants_count: Number(document.getElementById('activity-participants').value),
+    description: document.getElementById('activity-description').value.trim(),
+    outcome: document.getElementById('activity-outcome').value.trim()
+  };
+  try {
+    await api(`/api/departments/${encodeURIComponent(departmentId)}/activities`, {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    });
+    document.getElementById('form-department-activity').reset();
+    document.getElementById('activity-date').value = new Date().toISOString().slice(0, 10);
+    showToast('Department activity recorded.', 'success');
+    await loadDepartmentActivities(departmentId);
+  } catch (err) {}
+};
+
 const loadDepartments = async () => {
   try {
     const depts = await api('/api/departments');
     state.departments = depts;
+    const canManageDepartments = ['CHURCH_ADMIN', 'PASTOR', 'FIRST_ELDER', 'CHURCH_CLERK'].includes(state.currentUser?.role);
+    const createButton = document.getElementById('btn-add-department');
+    if (createButton) createButton.style.display = canManageDepartments ? 'inline-flex' : 'none';
+
     const grid = document.getElementById('departments-grid');
     if (!grid) return;
 
@@ -1659,16 +1893,23 @@ const loadDepartments = async () => {
       return `
         <div class="stat-card">
           <div class="stat-card-title">
-            <span>${d.name} (${d.code})</span>
+            <span>${escapeHtml(d.name)} (${escapeHtml(d.code)})</span>
             <span></span>
           </div>
           <div style="font-size: 11.5px; color: var(--text-muted); margin-bottom: 8px;">
-            Leader: <strong>${d.leader_name || 'Unassigned'}</strong>
+            Leader: <strong>${escapeHtml(d.leader_name || 'Unassigned')}</strong>
           </div>
-          <p style="font-size: 12.5px; color: #475569; margin-bottom: 10px;">${d.description || 'Active ministry in the local church.'}</p>
+          <p style="font-size: 12.5px; color: #475569; margin-bottom: 10px;">${escapeHtml(d.description || 'Active ministry in the local church.')}</p>
           ${budgetHtml}
           <div style="margin-top: 10px; font-size: 11.5px; color: var(--text-muted);">
             Members: <strong>${d.member_count}</strong> ${isOfficer ? `| Vouchers: <strong>${d.voucher_count}</strong>` : ''}
+          </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;">
+            <button type="button" class="btn btn-outline btn-sm" onclick="openDepartmentActivities('${escapeHtml(d.id)}')">View activities</button>
+            ${canManageDepartments ? `<button type="button" class="btn btn-outline btn-sm" onclick="openEditDepartmentModal('${escapeHtml(d.id)}')">Edit department</button>` : ''}
+            ${canManageDepartments || (state.currentUser?.role === 'DEPARTMENT_LEADER' && state.currentUser.department_id === d.id)
+              ? `<button type="button" class="btn btn-primary btn-sm" onclick="openDepartmentActivities('${escapeHtml(d.id)}', true)">Record activity</button>`
+              : ''}
           </div>
         </div>
       `;
@@ -1682,40 +1923,36 @@ const loadDepartments = async () => {
 const loadEvents = async () => {
   try {
     const isOfficer = ['CHURCH_ADMIN', 'PASTOR', 'FIRST_ELDER', 'CHURCH_CLERK', 'HEAD_TREASURER', 'ASSISTANT_TREASURER', 'DEPARTMENT_LEADER', 'AUDITOR'].includes(state.currentUser?.role);
+    const canManageEvents = ['CHURCH_ADMIN', 'PASTOR', 'FIRST_ELDER', 'CHURCH_CLERK', 'DEPARTMENT_LEADER'].includes(state.currentUser?.role);
+    const canRecordAttendance = ['CHURCH_ADMIN', 'PASTOR', 'FIRST_ELDER', 'CHURCH_CLERK'].includes(state.currentUser?.role);
 
     const [events, attendance] = await Promise.all([
       api('/api/events'),
       isOfficer ? api('/api/attendance') : Promise.resolve([])
     ]);
-
-    const evtBody = document.getElementById('table-events-body');
-    if (evtBody) {
-      evtBody.innerHTML = events.map(ev => `
-        <tr>
-          <td>
-            <strong>${ev.title}</strong>
-            <div style="font-size: 11px; color: var(--text-muted);">${ev.description || ''}</div>
-          </td>
-          <td>${ev.location}</td>
-          <td>${ev.start_date}</td>
-          <td>${ev.coordinator_name || 'Church Board'}</td>
-        </tr>
-      `).join('');
+    state.events = events;
+    state.attendance = attendance;
+    const scheduleButton = document.getElementById('btn-add-event');
+    if (scheduleButton) scheduleButton.style.display = canManageEvents ? 'inline-flex' : 'none';
+    const recordButton = document.getElementById('btn-record-attendance');
+    if (recordButton) recordButton.style.display = canRecordAttendance ? 'inline-flex' : 'none';
+    const attendanceCard = document.getElementById('card-attendance-wrapper');
+    if (attendanceCard) attendanceCard.style.display = isOfficer ? 'block' : 'none';
+    const eventFilter = document.getElementById('evt-department-filter');
+    if (eventFilter) {
+      const selected = eventFilter.value;
+      eventFilter.innerHTML = '<option value="">All departments</option>' +
+        state.departments.map(department => `<option value="${escapeHtml(department.id)}">${escapeHtml(department.name)}</option>`).join('');
+      eventFilter.value = selected;
     }
-
-    const attBody = document.getElementById('table-attendance-body');
-    if (attBody && isOfficer) {
-      attBody.innerHTML = attendance.map(a => `
-        <tr>
-          <td><strong>${a.date}</strong></td>
-          <td><span class="badge badge-info">${a.service_type.replace('_', ' ')}</span></td>
-          <td>${a.adult_count}</td>
-          <td>${a.children_count}</td>
-          <td>${a.visitors_count}</td>
-          <td><strong style="color: var(--sda-blue);">${a.total_count}</strong></td>
-        </tr>
-      `).join('');
+    const linkedEventSelect = document.getElementById('att-event');
+    if (linkedEventSelect) {
+      const selected = linkedEventSelect.value;
+      linkedEventSelect.innerHTML = '<option value="">General service (not event-linked)</option>' +
+        events.map(event => `<option value="${escapeHtml(event.id)}">${escapeHtml(event.title)} — ${escapeHtml(event.start_date)}</option>`).join('');
+      linkedEventSelect.value = selected;
     }
+    filterEvents();
   } catch (err) {}
 };
 
@@ -1723,22 +1960,26 @@ const openNewEventModal = () => openModal('modal-event');
 const submitEvent = async (e) => {
   e.preventDefault();
   const payload = {
-    title: document.getElementById('evt-title').value,
-    location: document.getElementById('evt-loc').value,
-    start_date: document.getElementById('evt-start').value.replace('T', ' ') + ':00',
-    end_date: document.getElementById('evt-end').value.replace('T', ' ') + ':00',
+    title: document.getElementById('evt-title').value.trim(),
+    description: document.getElementById('evt-description').value.trim(),
+    location: document.getElementById('evt-loc').value.trim(),
+    start_date: document.getElementById('evt-start').value,
+    end_date: document.getElementById('evt-end').value,
     department_id: document.getElementById('evt-dept').value || null
   };
   try {
     await api('/api/events', { method: 'POST', body: JSON.stringify(payload) });
     showToast('Event successfully added to church calendar', 'success');
     closeModal('modal-event');
-    loadEvents();
+    document.getElementById('form-event').reset();
+    await loadEvents();
   } catch (err) {}
 };
 
 const openAttendanceModal = () => {
   document.getElementById('att-date').value = new Date().toISOString().split('T')[0];
+  document.getElementById('att-event').value = '';
+  calculateAttTotal();
   openModal('modal-attendance');
 };
 
@@ -1758,17 +1999,78 @@ const submitAttendance = async (e) => {
   const payload = {
     service_type: document.getElementById('att-service').value,
     date: document.getElementById('att-date').value,
+    event_id: document.getElementById('att-event').value || null,
     adult_count: a,
     children_count: c,
-    visitors_count: v
+    visitors_count: v,
+    notes: document.getElementById('att-notes').value.trim()
   };
 
   try {
     await api('/api/attendance', { method: 'POST', body: JSON.stringify(payload) });
     showToast('Attendance recorded!', 'success');
     closeModal('modal-attendance');
-    loadEvents();
+    document.getElementById('form-attendance').reset();
+    await loadEvents();
   } catch (err) {}
+};
+
+const filterEvents = () => {
+  const search = (document.getElementById('evt-search')?.value || '').trim().toLowerCase();
+  const timeFilter = document.getElementById('evt-time-filter')?.value || 'upcoming';
+  const departmentId = document.getElementById('evt-department-filter')?.value || '';
+  const now = new Date();
+  const filteredEvents = state.events.filter(event => {
+    const startDate = new Date(event.start_date.replace(' ', 'T'));
+    const matchesTime = timeFilter === 'all' ||
+      (timeFilter === 'upcoming' && startDate >= now) ||
+      (timeFilter === 'past' && startDate < now);
+    const matchesDepartment = !departmentId || event.department_id === departmentId;
+    const matchesSearch = !search ||
+      [event.title, event.location, event.department_name, event.description]
+        .some(value => String(value || '').toLowerCase().includes(search));
+    return matchesTime && matchesDepartment && matchesSearch;
+  });
+  const eventBody = document.getElementById('table-events-body');
+  if (eventBody) {
+    eventBody.innerHTML = filteredEvents.length ? filteredEvents.map(event => `
+      <tr>
+        <td>
+          <strong>${escapeHtml(event.title)}</strong>
+          <div style="font-size:11px;color:var(--text-muted);">${escapeHtml(event.description || '')}</div>
+          <div style="font-size:11px;color:var(--text-muted);">${escapeHtml(event.department_name || 'Church-wide')}</div>
+        </td>
+        <td>${escapeHtml(event.location)}</td>
+        <td>${escapeHtml(event.start_date)}</td>
+        <td>${escapeHtml(event.coordinator_name || 'Church Board')}</td>
+      </tr>
+    `).join('') : '<tr><td colspan="4" style="text-align:center;color:var(--text-muted);padding:20px;">No events match these filters.</td></tr>';
+  }
+
+  const dateFrom = document.getElementById('att-date-from')?.value || '';
+  const dateTo = document.getElementById('att-date-to')?.value || '';
+  const serviceFilter = document.getElementById('att-service-filter')?.value || '';
+  const filteredAttendance = state.attendance.filter(record =>
+    (!dateFrom || record.date >= dateFrom) &&
+    (!dateTo || record.date <= dateTo) &&
+    (!serviceFilter || record.service_type === serviceFilter)
+  );
+  const attendanceBody = document.getElementById('table-attendance-body');
+  if (attendanceBody) {
+    attendanceBody.innerHTML = filteredAttendance.length ? filteredAttendance.map(record => `
+      <tr>
+        <td><strong>${escapeHtml(record.date)}</strong></td>
+        <td>
+          <span class="badge badge-info">${escapeHtml(record.service_type.replaceAll('_', ' '))}</span>
+          ${record.event_title ? `<div style="font-size:11px;margin-top:4px;">${escapeHtml(record.event_title)}</div>` : ''}
+        </td>
+        <td>${Number(record.adult_count) || 0}</td>
+        <td>${Number(record.children_count) || 0}</td>
+        <td>${Number(record.visitors_count) || 0}</td>
+        <td><strong style="color:var(--sda-blue);">${Number(record.total_count) || 0}</strong></td>
+      </tr>
+    `).join('') : '<tr><td colspan="6" style="text-align:center;color:var(--text-muted);padding:20px;">No attendance records match these filters.</td></tr>';
+  }
 };
 
 // ==========================================
