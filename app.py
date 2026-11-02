@@ -822,6 +822,7 @@ def create_asset():
     condition = data.get('condition', 'GOOD')
     cost = float(data.get('purchase_cost', 0.0))
     custodian_id = data.get('custodian_id')
+    notes = data.get('notes', '').strip() or None
 
     if not tag or not name:
         return jsonify({'error': 'Asset tag and name are required'}), 400
@@ -829,9 +830,9 @@ def create_asset():
     conn = get_db_connection()
     asset_id = 'ast-' + str(uuid.uuid4())[:8]
     conn.execute('''
-        INSERT INTO church_assets (id, asset_tag, name, category, quantity, location, condition, custodian_id, purchase_cost)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ''', (asset_id, tag, name, category, quantity, location, condition, custodian_id, cost))
+        INSERT INTO church_assets (id, asset_tag, name, category, quantity, location, condition, custodian_id, purchase_cost, notes)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ''', (asset_id, tag, name, category, quantity, location, condition, custodian_id, cost, notes))
     conn.commit()
     conn.close()
 
@@ -1411,6 +1412,71 @@ def get_dashboard_overview():
         'upcoming_events': [dict(ev) for ev in upcoming_events],
         'announcements': [dict(a) for a in recent_announcements]
     })
+
+@app.route('/api/finance/members/<member_id>/contributions', methods=['GET'])
+@login_required
+@roles_required('HEAD_TREASURER', 'ASSISTANT_TREASURER', 'PASTOR', 'FIRST_ELDER', 'AUDITOR', 'AUTHORIZED_ELDER_READONLY')
+def get_member_contributions(member_id):
+    conn = get_db_connection()
+    member = conn.execute('SELECT * FROM members WHERE id = ?', (member_id,)).fetchone()
+    if not member:
+        conn.close()
+        return jsonify({'error': 'Member not found'}), 404
+
+    envelopes = conn.execute('''
+        SELECT e.*
+        FROM tithe_offering_envelopes e
+        WHERE e.member_id = ? AND e.status = 'CONFIRMED'
+        ORDER BY e.transaction_date DESC
+    ''', (member_id,)).fetchall()
+
+    result_envelopes = []
+    totals_by_fund = {}
+    grand_total = 0.0
+
+    for env in envelopes:
+        e_dict = dict(env)
+        items = conn.execute('''
+            SELECT ei.amount, fc.name as fund_name, fc.code as fund_code, fc.fund_type
+            FROM envelope_items ei
+            JOIN fund_categories fc ON ei.fund_category_id = fc.id
+            WHERE ei.envelope_id = ?
+        ''', (e_dict['id'],)).fetchall()
+        e_dict['items'] = [dict(it) for it in items]
+        for it in items:
+            amt = float(it['amount'])
+            grand_total += amt
+            code = it['fund_code']
+            if code not in totals_by_fund:
+                totals_by_fund[code] = {'fund_name': it['fund_name'], 'fund_type': it['fund_type'], 'total': 0.0}
+            totals_by_fund[code]['total'] += amt
+        result_envelopes.append(e_dict)
+
+    conn.close()
+    return jsonify({
+        'member': {
+            'id': member['id'],
+            'member_number': member['member_number'],
+            'name': f"{member['first_name']} {member['last_name']}",
+            'phone': member['phone'],
+            'email': member['email']
+        },
+        'envelopes': result_envelopes,
+        'totals_by_fund': list(totals_by_fund.values()),
+        'grand_total': grand_total
+    })
+
+@app.route('/api/officers', methods=['GET'])
+@login_required
+def get_officers():
+    conn = get_db_connection()
+    officers = conn.execute('''
+        SELECT id, full_name, role FROM users
+        WHERE role != 'MEMBER' AND active = 1
+        ORDER BY full_name ASC
+    ''').fetchall()
+    conn.close()
+    return jsonify([dict(o) for o in officers])
 
 @app.route('/api/users', methods=['GET'])
 @login_required

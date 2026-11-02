@@ -1116,6 +1116,8 @@ const renderMembersTable = (members) => {
 
   const isOfficer = ['CHURCH_ADMIN', 'PASTOR', 'FIRST_ELDER', 'CHURCH_CLERK', 'HEAD_TREASURER', 'ASSISTANT_TREASURER'].includes(state.currentUser?.role);
 
+  const canViewContributions = ['HEAD_TREASURER', 'ASSISTANT_TREASURER', 'PASTOR', 'FIRST_ELDER', 'AUDITOR', 'AUTHORIZED_ELDER_READONLY'].includes(state.currentUser?.role);
+
   if (isOfficer) {
     headerRow.innerHTML = `
       <th>Member #</th>
@@ -1126,6 +1128,7 @@ const renderMembersTable = (members) => {
       <th>Baptism Details</th>
       <th>Department</th>
       <th>Status</th>
+      ${canViewContributions ? '<th>Contributions</th>' : ''}
     `;
     tbody.innerHTML = members.map(m => `
       <tr>
@@ -1139,6 +1142,7 @@ const renderMembersTable = (members) => {
         </td>
         <td>${m.department_name || 'General'}</td>
         <td><span class="badge badge-success">${m.status}</span></td>
+        ${canViewContributions ? `<td><button class="btn btn-outline btn-sm" onclick="loadMemberContributions('${m.id}', '${(m.first_name + ' ' + m.last_name).replace(/'/g, "&#39;")}')">View</button></td>` : ''}
       </tr>
     `).join('');
   } else {
@@ -1173,6 +1177,55 @@ const filterMembers = () => {
   renderMembersTable(filtered);
 };
 
+const loadMemberContributions = async (memberId, memberName) => {
+  try {
+    const data = await api(`/api/finance/members/${memberId}/contributions`);
+    const m = data.member;
+
+    document.getElementById('contrib-modal-title').innerText = `Contribution Summary — ${m.name}`;
+    document.getElementById('contrib-member-info').innerHTML = `
+      <strong>${m.member_number}</strong> | ${m.phone || '-'} | ${m.email || '-'}
+    `;
+
+    const totalsEl = document.getElementById('contrib-totals');
+    if (data.totals_by_fund.length > 0) {
+      totalsEl.innerHTML = data.totals_by_fund.map(t => `
+        <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);font-size:13px;">
+          <span>${t.fund_name} <small style="color:var(--text-muted);">(${t.fund_type.replace('_',' ')})</small></span>
+          <strong>${formatKES(t.total)}</strong>
+        </div>
+      `).join('') + `
+        <div style="display:flex;justify-content:space-between;padding:8px 0;font-size:14px;">
+          <strong>Grand Total</strong>
+          <strong style="color:var(--sda-blue);">${formatKES(data.grand_total)}</strong>
+        </div>
+      `;
+    } else {
+      totalsEl.innerHTML = '<p style="color:var(--text-muted);font-size:13px;">No confirmed contributions recorded.</p>';
+    }
+
+    const tbody = document.getElementById('contrib-envelopes-body');
+    if (data.envelopes.length > 0) {
+      tbody.innerHTML = data.envelopes.map(e => {
+        const breakdown = (e.items || []).map(it => `${it.fund_name}: ${formatKES(it.amount)}`).join('<br>');
+        return `
+          <tr>
+            <td><strong>${e.receipt_number}</strong></td>
+            <td>${e.transaction_date.split(' ')[0]}</td>
+            <td><span class="badge ${e.payment_method === 'MPESA' ? 'badge-success' : 'badge-secondary'}">${e.payment_method}</span></td>
+            <td style="font-size:11.5px;color:var(--text-muted);">${breakdown}</td>
+            <td><strong style="color:var(--sda-blue);">${formatKES(e.total_amount)}</strong></td>
+          </tr>
+        `;
+      }).join('');
+    } else {
+      tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--text-muted);padding:20px;">No receipts found.</td></tr>';
+    }
+
+    openModal('modal-member-contributions');
+  } catch (err) {}
+};
+
 const openNewMemberModal = () => openModal('modal-member');
 
 const submitMember = async (e) => {
@@ -1199,6 +1252,89 @@ const submitMember = async (e) => {
     closeModal('modal-member');
     loadMembers();
     loadDashboard();
+  } catch (err) {}
+};
+
+// ==========================================
+// CHURCH ASSETS & INVENTORY
+// ==========================================
+const loadAssets = async () => {
+  try {
+    const assets = await api('/api/assets');
+    const tbody = document.getElementById('table-assets-body');
+    if (!tbody) return;
+
+    if (assets.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--text-muted);padding:24px;">No assets registered yet.</td></tr>';
+      return;
+    }
+
+    const canEdit = ['CHURCH_CLERK', 'HEAD_TREASURER', 'PASTOR', 'FIRST_ELDER', 'CHURCH_ADMIN'].includes(state.currentUser?.role);
+
+    tbody.innerHTML = assets.map(a => {
+      let condBadge = 'badge-success';
+      if (a.condition === 'FAIR') condBadge = 'badge-warning';
+      else if (a.condition === 'NEEDS_REPAIR') condBadge = 'badge-danger';
+      else if (a.condition === 'EXCELLENT') condBadge = 'badge-info';
+
+      return `
+        <tr>
+          <td><strong>${a.asset_tag}</strong></td>
+          <td>
+            <strong>${a.name}</strong>
+            ${a.notes ? `<div style="font-size:11px;color:var(--text-muted);">${a.notes}</div>` : ''}
+          </td>
+          <td><span class="badge badge-secondary">${a.category.replace(/_/g, ' ')}</span></td>
+          <td style="text-align:center;">${a.quantity}</td>
+          <td>${a.location}</td>
+          <td><span class="badge ${condBadge}">${a.condition.replace('_', ' ')}</span></td>
+          <td>${a.custodian_name || '<span style="color:var(--text-muted);">Unassigned</span>'}</td>
+          <td><strong style="color:var(--sda-blue);">${formatKES(a.purchase_cost)}</strong></td>
+        </tr>
+      `;
+    }).join('');
+  } catch (err) {}
+};
+
+const openNewAssetModal = async () => {
+  const custSelect = document.getElementById('ast-custodian');
+  if (custSelect) {
+    try {
+      const officers = await api('/api/officers');
+      custSelect.innerHTML = '<option value="">-- Unassigned --</option>' +
+        officers.map(o => `<option value="${o.id}">${o.full_name} (${o.role.replace(/_/g, ' ')})</option>`).join('');
+    } catch (_) {
+      custSelect.innerHTML = '<option value="">-- Unassigned --</option>';
+    }
+  }
+  openModal('modal-asset');
+};
+
+const submitAsset = async (e) => {
+  e.preventDefault();
+  const payload = {
+    asset_tag: document.getElementById('ast-tag').value.trim(),
+    name: document.getElementById('ast-name').value.trim(),
+    category: document.getElementById('ast-cat').value,
+    quantity: parseInt(document.getElementById('ast-qty').value) || 1,
+    location: document.getElementById('ast-loc').value.trim(),
+    condition: document.getElementById('ast-cond').value,
+    purchase_cost: parseFloat(document.getElementById('ast-cost').value) || 0,
+    custodian_id: document.getElementById('ast-custodian').value || null,
+    notes: document.getElementById('ast-notes').value.trim() || null
+  };
+
+  if (!payload.asset_tag || !payload.name || !payload.location) {
+    showToast('Asset tag, name and location are required', 'warning');
+    return;
+  }
+
+  try {
+    await api('/api/assets', { method: 'POST', body: JSON.stringify(payload) });
+    showToast('Asset registered in church inventory!', 'success');
+    closeModal('modal-asset');
+    document.getElementById('form-asset').reset();
+    loadAssets();
   } catch (err) {}
 };
 

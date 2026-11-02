@@ -1234,6 +1234,18 @@
               <input type="number" id="ast-cost" class="form-control" min="0" value="0">
             </div>
           </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Custodian (Officer)</label>
+              <select id="ast-custodian" class="form-control">
+                <option value="">-- Unassigned --</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Notes (Optional)</label>
+              <input type="text" id="ast-notes" class="form-control" placeholder="e.g. Donated by Deacon Kamau">
+            </div>
+          </div>
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-outline" onclick="closeModal('modal-asset')">Cancel</button>
@@ -1436,6 +1448,41 @@
       <div class="modal-footer">
         <button type="button" class="btn btn-outline" onclick="closeModal('modal-assign-role')">Cancel</button>
         <button type="button" class="btn btn-primary" onclick="executeRoleAssignment()">Save Role</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Member Contribution Summary Modal (Treasurer View) -->
+  <div class="modal-overlay" id="modal-member-contributions">
+    <div class="modal-container" style="max-width: 680px;">
+      <div class="modal-header">
+        <h3 class="modal-title" id="contrib-modal-title">Member Contribution Summary</h3>
+        <button class="modal-close" onclick="closeModal('modal-member-contributions')">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p id="contrib-member-info" style="font-size:12.5px;color:var(--text-muted);margin-bottom:16px;"></p>
+
+        <h4 style="font-size:13px;font-weight:600;color:var(--sda-blue-dark);margin-bottom:8px;">Totals by Fund Category</h4>
+        <div id="contrib-totals" style="margin-bottom:20px;"></div>
+
+        <h4 style="font-size:13px;font-weight:600;color:var(--sda-blue-dark);margin-bottom:8px;">Receipt History</h4>
+        <div class="table-responsive" style="padding:0;">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Receipt #</th>
+                <th>Date</th>
+                <th>Method</th>
+                <th>Breakdown</th>
+                <th>Amount</th>
+              </tr>
+            </thead>
+            <tbody id="contrib-envelopes-body"></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline" onclick="closeModal('modal-member-contributions')">Close</button>
       </div>
     </div>
   </div>
