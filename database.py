@@ -306,6 +306,23 @@ def init_db():
         FOREIGN KEY (custodian_id) REFERENCES users(id) ON DELETE SET NULL
     );
 
+    -- Volunteer Ministry Coordination
+    CREATE TABLE IF NOT EXISTS volunteers (
+        id TEXT PRIMARY KEY,
+        member_id TEXT NOT NULL,
+        ministry TEXT NOT NULL,
+        role TEXT NOT NULL DEFAULT 'VOLUNTEER',
+        availability TEXT NOT NULL DEFAULT 'REGULAR',
+        skills TEXT,
+        status TEXT NOT NULL DEFAULT 'ACTIVE', -- ACTIVE, INACTIVE, ON_HOLD
+        notes TEXT,
+        created_by_id TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (member_id) REFERENCES members(id) ON DELETE CASCADE,
+        FOREIGN KEY (created_by_id) REFERENCES users(id) ON DELETE CASCADE,
+        UNIQUE(member_id, ministry)
+    );
+
     -- Meeting Minutes & Resolutions
     CREATE TABLE IF NOT EXISTS meetings (
         id TEXT PRIMARY KEY,

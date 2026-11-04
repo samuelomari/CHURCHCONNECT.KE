@@ -1131,6 +1131,73 @@ def create_asset():
     return jsonify({'id': asset_id, 'asset_tag': tag, 'name': name}), 201
 
 # -------------------------------------------------------------
+# Volunteer Ministry Coordination
+# -------------------------------------------------------------
+@app.route('/api/volunteers', methods=['GET'])
+@login_required
+def get_volunteers():
+    conn = get_db_connection()
+    volunteers = conn.execute('''
+        SELECT v.*, m.first_name || ' ' || m.last_name AS member_name,
+               u.full_name AS created_by_name
+        FROM volunteers v
+        LEFT JOIN members m ON v.member_id = m.id
+        LEFT JOIN users u ON v.created_by_id = u.id
+        ORDER BY v.created_at DESC
+    ''').fetchall()
+    conn.close()
+    return jsonify([dict(item) for item in volunteers])
+
+@app.route('/api/volunteers', methods=['POST'])
+@login_required
+@roles_required('PASTOR', 'FIRST_ELDER', 'CHURCH_CLERK', 'DEPARTMENT_LEADER', 'CHURCH_ADMIN')
+def create_volunteer():
+    data = request.get_json() or {}
+    member_id = (data.get('member_id') or '').strip()
+    ministry = (data.get('ministry') or '').strip()
+    availability = (data.get('availability') or 'REGULAR').strip()
+    skills = (data.get('skills') or '').strip() or None
+    notes = (data.get('notes') or '').strip() or None
+
+    if not member_id or not ministry:
+        return jsonify({'error': 'Member and ministry are required.'}), 400
+
+    conn = get_db_connection()
+    member = conn.execute('SELECT id FROM members WHERE id = ?', (member_id,)).fetchone()
+    if not member:
+        conn.close()
+        return jsonify({'error': 'Member not found.'}), 404
+
+    existing = conn.execute(
+        'SELECT id FROM volunteers WHERE member_id = ? AND ministry = ?',
+        (member_id, ministry)
+    ).fetchone()
+    if existing:
+        conn.close()
+        return jsonify({'error': 'This member is already assigned to that ministry.'}), 409
+
+    volunteer_id = 'vol-' + str(uuid.uuid4())[:8]
+    conn.execute('''
+        INSERT INTO volunteers (id, member_id, ministry, availability, skills, notes, created_by_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+    ''', (volunteer_id, member_id, ministry, availability, skills, notes, g.user['id']))
+    conn.commit()
+    conn.close()
+
+    create_audit_log(g.user['id'], 'CREATE_VOLUNTEER', 'Volunteer', volunteer_id, {
+        'member_id': member_id,
+        'ministry': ministry,
+        'availability': availability
+    })
+    return jsonify({
+        'id': volunteer_id,
+        'member_id': member_id,
+        'ministry': ministry,
+        'availability': availability,
+        'status': 'ACTIVE'
+    }), 201
+
+# -------------------------------------------------------------
 # Meetings, Minutes & Resolutions
 # -------------------------------------------------------------
 @app.route('/api/meetings', methods=['GET'])

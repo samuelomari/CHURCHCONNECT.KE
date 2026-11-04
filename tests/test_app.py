@@ -674,5 +674,30 @@ class ChurchConnectTestCase(unittest.TestCase):
         })
         self.assertEqual(join.status_code, 201)
 
+    def test_22_volunteer_management(self):
+        clerk_token = self.get_token('clerk@churchconnect.ke')
+        member_token = self.get_token('john.k@gmail.com')
+
+        create = self.client.post('/api/volunteers', headers={'Authorization': f'Bearer {clerk_token}'}, json={
+            'member_id': 'mem-001',
+            'ministry': 'MEDIA & COMMUNICATION',
+            'availability': 'WEEKENDS',
+            'skills': 'Video editing, social media, photography',
+            'notes': 'Helps with live stream and church announcements.'
+        })
+        self.assertEqual(create.status_code, 201)
+        volunteer_id = create.get_json()['id']
+
+        listing = self.client.get('/api/volunteers', headers={'Authorization': f'Bearer {member_token}'})
+        self.assertEqual(listing.status_code, 200)
+        self.assertTrue(any(item['id'] == volunteer_id for item in listing.get_json()))
+
+        forbidden = self.client.post('/api/volunteers', headers={'Authorization': f'Bearer {member_token}'}, json={
+            'member_id': 'mem-001',
+            'ministry': 'YOUTH',
+            'availability': 'TUESDAYS'
+        })
+        self.assertEqual(forbidden.status_code, 403)
+
 if __name__ == '__main__':
     unittest.main()
