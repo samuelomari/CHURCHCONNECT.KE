@@ -12,8 +12,9 @@ def seed_database():
         'audit_logs', 'payment_transactions', 'resolutions', 'meetings',
         'church_assets', 'approval_decisions', 'approval_rules',
         'approval_committee_members', 'approval_committees', 'financial_reversals',
-        'attendance', 'announcements', 'events', 'envelope_items',
+        'attendance', 'announcements', 'media_library', 'events', 'envelope_items',
         'tithe_offering_envelopes', 'expenditure_vouchers',
+        'pastoral_followups', 'visitor_registrations', 'prayer_requests',
         'members', 'departments', 'fund_categories', 'users'
     ]
     for table in tables:

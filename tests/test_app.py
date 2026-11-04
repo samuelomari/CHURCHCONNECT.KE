@@ -30,6 +30,13 @@ class ChurchConnectTestCase(unittest.TestCase):
         except Exception:
             pass
 
+    def reset_member_role_state(self):
+        conn = get_db_connection()
+        conn.execute("UPDATE users SET role = 'MEMBER', department_id = NULL WHERE id = 'usr-member-john'")
+        conn.execute("UPDATE users SET role = 'MEMBER', department_id = NULL WHERE id = 'usr-youth-lead'")
+        conn.commit()
+        conn.close()
+
     def get_token(self, email, password='password123'):
         res = self.client.post('/api/auth/login', json={
             'email': email,
@@ -502,6 +509,170 @@ class ChurchConnectTestCase(unittest.TestCase):
             'Authorization': f'Bearer {leader_token}'
         })
         self.assertTrue(all(voucher['department_id'] == 'dept-ay' for voucher in vouchers.get_json()))
+
+    def test_18_pastoral_prayer_and_visitor_management(self):
+        member_token = self.get_token('john.k@gmail.com')
+        pastor_token = self.get_token('pastor@churchconnect.ke')
+        clerk_token = self.get_token('clerk@churchconnect.ke')
+
+        prayer = self.client.post('/api/pastoral/prayer-requests', headers={'Authorization': f'Bearer {member_token}'}, json={
+            'title': 'Prayer for my grandmother',
+            'details': 'She is unwell and needs strength and healing.',
+            'is_private': True,
+            'category': 'HEALTH'
+        })
+        self.assertEqual(prayer.status_code, 201)
+        prayer_id = prayer.get_json()['id']
+
+        list_prayers = self.client.get('/api/pastoral/prayer-requests', headers={'Authorization': f'Bearer {pastor_token}'})
+        self.assertEqual(list_prayers.status_code, 200)
+        self.assertTrue(any(item['id'] == prayer_id for item in list_prayers.get_json()))
+
+        followup = self.client.post('/api/pastoral/followups', headers={'Authorization': f'Bearer {pastor_token}'}, json={
+            'entity_type': 'PRAYER_REQUEST',
+            'entity_id': prayer_id,
+            'assigned_to_id': 'usr-pastor',
+            'status': 'IN_PROGRESS',
+            'notes': 'Visit the family after church service.'
+        })
+        self.assertEqual(followup.status_code, 201)
+        self.assertEqual(followup.get_json()['status'], 'IN_PROGRESS')
+
+        visitor = self.client.post('/api/pastoral/visitors', headers={'Authorization': f'Bearer {clerk_token}'}, json={
+            'full_name': 'Mary Atieno',
+            'phone': '254700123456',
+            'email': 'mary.atieno@example.com',
+            'source': 'SABBATH_SERVICE',
+            'notes': 'Interested in the women ministry.'
+        })
+        self.assertEqual(visitor.status_code, 201)
+        visitor_id = visitor.get_json()['id']
+
+        visitor_list = self.client.get('/api/pastoral/visitors', headers={'Authorization': f'Bearer {clerk_token}'})
+        self.assertEqual(visitor_list.status_code, 200)
+        self.assertTrue(any(item['id'] == visitor_id for item in visitor_list.get_json()))
+
+        forbidden = self.client.get('/api/pastoral/visitors', headers={'Authorization': f'Bearer {member_token}'})
+        self.assertEqual(forbidden.status_code, 403)
+
+    def test_19_committee_action_tracker_and_status_updates(self):
+        pastor_token = self.get_token('pastor@churchconnect.ke')
+        clerk_token = self.get_token('clerk@churchconnect.ke')
+
+        new_leader = self.client.post('/api/auth/register', json={
+            'email': 'fresh.leader@churchconnect.ke',
+            'password': 'FreshLeaderPassword123',
+            'full_name': 'Fresh Leader',
+            'phone': '254700000021'
+        })
+        self.assertEqual(new_leader.status_code, 201)
+        leader_user_id = new_leader.get_json()['user']['id']
+
+        conn = get_db_connection()
+        conn.execute('UPDATE users SET role = ?, department_id = ? WHERE id = ?', ('DEPARTMENT_LEADER', 'dept-ay', leader_user_id))
+        conn.commit()
+        conn.close()
+
+        youth_leader_token = self.get_token('fresh.leader@churchconnect.ke', 'FreshLeaderPassword123')
+
+        meeting = self.client.post('/api/meetings', headers={'Authorization': f'Bearer {clerk_token}'}, json={
+            'title': 'Youth Outreach Review',
+            'meeting_type': 'DEPARTMENTAL',
+            'date': '2026-11-12',
+            'chairperson_id': 'usr-pastor',
+            'secretary_id': 'usr-clerk',
+            'minutes_text': 'Reviewed outreach contacts and action points for follow-up.',
+            'resolutions': [{
+                'resolution_number': 'Y-01',
+                'title': 'Follow up with new visitors',
+                'description': 'Contact each first-time visitor within 7 days and record the visit result.',
+                'assigned_officer_id': leader_user_id,
+                'due_date': '2026-11-20'
+            }]
+        })
+        self.assertEqual(meeting.status_code, 201)
+
+        actions = self.client.get('/api/leadership/actions', headers={'Authorization': f'Bearer {pastor_token}'})
+        self.assertEqual(actions.status_code, 200)
+        action_items = actions.get_json()
+        self.assertTrue(any(item['title'] == 'Follow up with new visitors' for item in action_items))
+
+        resolution_id = next(item['id'] for item in action_items if item['title'] == 'Follow up with new visitors')
+        update = self.client.patch(f'/api/leadership/actions/{resolution_id}/status', headers={'Authorization': f'Bearer {youth_leader_token}'}, json={
+            'status': 'COMPLETED',
+            'notes': 'All new visitors were followed up and their needs were recorded.'
+        })
+        self.assertEqual(update.status_code, 200)
+        self.assertEqual(update.get_json()['status'], 'COMPLETED')
+
+        restricted = self.client.patch(f'/api/leadership/actions/{resolution_id}/status', headers={'Authorization': f'Bearer {clerk_token}'}, json={
+            'status': 'IN_PROGRESS'
+        })
+        self.assertEqual(restricted.status_code, 403)
+
+    def test_20_sermon_and_media_library(self):
+        self.reset_member_role_state()
+        member_token = self.get_token('john.k@gmail.com')
+        pastor_token = self.get_token('pastor@churchconnect.ke')
+
+        create = self.client.post('/api/media-library', headers={'Authorization': f'Bearer {pastor_token}'}, json={
+            'title': 'Sabbath Sermon: Faith in Action',
+            'description': 'Practical lessons on living faith in daily ministry.',
+            'category': 'SERMON',
+            'media_type': 'VIDEO',
+            'speaker_name': 'Pr. David Ochieng',
+            'url': 'https://example.com/media/faith-in-action.mp4',
+            'is_featured': True,
+            'target_audience': 'ALL'
+        })
+        self.assertEqual(create.status_code, 201)
+        media_id = create.get_json()['id']
+
+        member_list = self.client.get('/api/media-library', headers={'Authorization': f'Bearer {member_token}'})
+        self.assertEqual(member_list.status_code, 200)
+        self.assertTrue(any(item['id'] == media_id for item in member_list.get_json()))
+
+        denied = self.client.post('/api/media-library', headers={'Authorization': f'Bearer {member_token}'}, json={
+            'title': 'Secret resource',
+            'description': 'Should fail',
+            'category': 'STUDY_GUIDE',
+            'media_type': 'PDF',
+            'speaker_name': 'Member',
+            'url': 'https://example.com/secret.pdf'
+        })
+        self.assertEqual(denied.status_code, 403)
+
+    def test_21_small_group_and_bible_study_management(self):
+        self.reset_member_role_state()
+        member_token = self.get_token('john.k@gmail.com')
+        pastor_token = self.get_token('pastor@churchconnect.ke')
+
+        forbidden = self.client.post('/api/small-groups', headers={'Authorization': f'Bearer {member_token}'}, json={
+            'name': 'Youth Bible Study',
+            'category': 'BIBLE_STUDY',
+            'meeting_day': 'WEDNESDAY',
+            'leader_id': 'usr-youth-lead'
+        })
+        self.assertEqual(forbidden.status_code, 403)
+
+        created = self.client.post('/api/small-groups', headers={'Authorization': f'Bearer {pastor_token}'}, json={
+            'name': 'Women of Faith',
+            'category': 'BIBLE_STUDY',
+            'meeting_day': 'WEDNESDAY',
+            'leader_id': 'usr-member-john',
+            'description': 'Wednesday bible study and prayer group.'
+        })
+        self.assertEqual(created.status_code, 201)
+        group_id = created.get_json()['id']
+
+        listing = self.client.get('/api/small-groups', headers={'Authorization': f'Bearer {member_token}'})
+        self.assertEqual(listing.status_code, 200)
+        self.assertTrue(any(item['id'] == group_id for item in listing.get_json()))
+
+        join = self.client.post(f'/api/small-groups/{group_id}/members', headers={'Authorization': f'Bearer {member_token}'}, json={
+            'member_id': 'mem-001'
+        })
+        self.assertEqual(join.status_code, 201)
 
 if __name__ == '__main__':
     unittest.main()

@@ -244,6 +244,51 @@ def init_db():
         FOREIGN KEY (author_id) REFERENCES users(id)
     );
 
+    -- Sermon & Media Library
+    CREATE TABLE IF NOT EXISTS media_library (
+        id TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        description TEXT,
+        category TEXT NOT NULL DEFAULT 'SERMON',
+        media_type TEXT NOT NULL DEFAULT 'VIDEO',
+        speaker_name TEXT,
+        url TEXT NOT NULL,
+        target_audience TEXT NOT NULL DEFAULT 'ALL',
+        is_featured INTEGER NOT NULL DEFAULT 0,
+        is_published INTEGER NOT NULL DEFAULT 1,
+        created_by_id TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (created_by_id) REFERENCES users(id)
+    );
+
+    -- Small Groups & Bible Study Circles
+    CREATE TABLE IF NOT EXISTS small_groups (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        description TEXT,
+        category TEXT NOT NULL DEFAULT 'BIBLE_STUDY',
+        meeting_day TEXT NOT NULL DEFAULT 'WEDNESDAY',
+        meeting_time TEXT,
+        location TEXT,
+        leader_id TEXT,
+        is_active INTEGER NOT NULL DEFAULT 1,
+        created_by_id TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (leader_id) REFERENCES users(id) ON DELETE SET NULL,
+        FOREIGN KEY (created_by_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS small_group_members (
+        id TEXT PRIMARY KEY,
+        group_id TEXT NOT NULL,
+        member_id TEXT NOT NULL,
+        role TEXT NOT NULL DEFAULT 'MEMBER',
+        joined_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (group_id) REFERENCES small_groups(id) ON DELETE CASCADE,
+        FOREIGN KEY (member_id) REFERENCES members(id) ON DELETE CASCADE,
+        UNIQUE(group_id, member_id)
+    );
+
     -- Church Assets & Inventory
     CREATE TABLE IF NOT EXISTS church_assets (
         id TEXT PRIMARY KEY,
@@ -283,8 +328,10 @@ def init_db():
         description TEXT NOT NULL,
         assigned_officer_id TEXT,
         status TEXT NOT NULL DEFAULT 'IN_PROGRESS', -- PENDING, IN_PROGRESS, COMPLETED
+        status_note TEXT,
         due_date TEXT,
         created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT,
         FOREIGN KEY (meeting_id) REFERENCES meetings(id) ON DELETE CASCADE,
         FOREIGN KEY (assigned_officer_id) REFERENCES users(id)
     );
@@ -392,6 +439,52 @@ def init_db():
         used_at INTEGER,
         created_at INTEGER NOT NULL,
         FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS prayer_requests (
+        id TEXT PRIMARY KEY,
+        member_id TEXT,
+        requestor_name TEXT NOT NULL,
+        title TEXT NOT NULL,
+        details TEXT NOT NULL,
+        category TEXT NOT NULL DEFAULT 'GENERAL',
+        is_private INTEGER NOT NULL DEFAULT 0,
+        status TEXT NOT NULL DEFAULT 'OPEN',
+        assigned_to_id TEXT,
+        created_by_id TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (member_id) REFERENCES members(id) ON DELETE SET NULL,
+        FOREIGN KEY (assigned_to_id) REFERENCES users(id) ON DELETE SET NULL,
+        FOREIGN KEY (created_by_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS pastoral_followups (
+        id TEXT PRIMARY KEY,
+        entity_type TEXT NOT NULL,
+        entity_id TEXT NOT NULL,
+        assigned_to_id TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'OPEN',
+        notes TEXT,
+        created_by_id TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (assigned_to_id) REFERENCES users(id) ON DELETE CASCADE,
+        FOREIGN KEY (created_by_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS visitor_registrations (
+        id TEXT PRIMARY KEY,
+        full_name TEXT NOT NULL,
+        phone TEXT,
+        email TEXT,
+        source TEXT NOT NULL DEFAULT 'SABBATH_SERVICE',
+        status TEXT NOT NULL DEFAULT 'NEW',
+        assigned_to_id TEXT,
+        notes TEXT,
+        created_by_id TEXT NOT NULL,
+        first_visit_date TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (assigned_to_id) REFERENCES users(id) ON DELETE SET NULL,
+        FOREIGN KEY (created_by_id) REFERENCES users(id) ON DELETE CASCADE
     );
     ''')
 

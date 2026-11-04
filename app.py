@@ -397,6 +397,155 @@ def get_me():
     return jsonify(dict(user))
 
 # -------------------------------------------------------------
+# Pastoral care, prayer requests & visitor management
+# -------------------------------------------------------------
+PASTORAL_OFFICER_ROLES = {'PASTOR', 'FIRST_ELDER', 'CHURCH_ADMIN', 'CHURCH_CLERK', 'AUTHORIZED_ELDER_READONLY', 'DEPARTMENT_LEADER'}
+
+@app.route('/api/pastoral/prayer-requests', methods=['GET'])
+@login_required
+def list_prayer_requests():
+    conn = get_db_connection()
+    if g.user['role'] in PASTORAL_OFFICER_ROLES:
+        rows = conn.execute('''
+            SELECT pr.*, u.full_name as assigned_to_name, creator.full_name as created_by_name
+            FROM prayer_requests pr
+            LEFT JOIN users u ON pr.assigned_to_id = u.id
+            LEFT JOIN users creator ON pr.created_by_id = creator.id
+            ORDER BY pr.created_at DESC
+        ''').fetchall()
+    else:
+        rows = conn.execute('''
+            SELECT pr.*, u.full_name as assigned_to_name, creator.full_name as created_by_name
+            FROM prayer_requests pr
+            LEFT JOIN users u ON pr.assigned_to_id = u.id
+            LEFT JOIN users creator ON pr.created_by_id = creator.id
+            WHERE pr.created_by_id = ? OR pr.member_id = ?
+            ORDER BY pr.created_at DESC
+        ''', (g.user['id'], g.user.get('member_id'))).fetchall()
+    conn.close()
+    return jsonify([dict(row) for row in rows])
+
+@app.route('/api/pastoral/prayer-requests', methods=['POST'])
+@login_required
+def create_prayer_request():
+    data = request.get_json() or {}
+    title = (data.get('title') or '').strip()
+    details = (data.get('details') or '').strip()
+    if not title or not details:
+        return jsonify({'error': 'Title and details are required.'}), 400
+
+    member_id = g.user.get('member_id')
+    requestor_name = g.user.get('full_name') or data.get('requestor_name') or 'Church Member'
+    category = (data.get('category') or 'GENERAL').strip().upper()
+    is_private = bool(data.get('is_private'))
+    assigned_to_id = data.get('assigned_to_id')
+
+    conn = get_db_connection()
+    prayer_id = 'prayer-' + str(uuid.uuid4())[:8]
+    conn.execute('''
+        INSERT INTO prayer_requests (id, member_id, requestor_name, title, details, category, is_private, status, assigned_to_id, created_by_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, 'OPEN', ?, ?)
+    ''', (prayer_id, member_id, requestor_name, title, details, category, int(is_private), assigned_to_id, g.user['id']))
+    conn.commit()
+    conn.close()
+
+    return jsonify({'id': prayer_id, 'title': title, 'status': 'OPEN', 'is_private': is_private}), 201
+
+@app.route('/api/pastoral/followups', methods=['GET'])
+@login_required
+def list_followups():
+    conn = get_db_connection()
+    entity_type = request.args.get('entity_type')
+    entity_id = request.args.get('entity_id')
+    query = '''
+        SELECT pf.*, u.full_name as assigned_to_name, creator.full_name as created_by_name
+        FROM pastoral_followups pf
+        LEFT JOIN users u ON pf.assigned_to_id = u.id
+        LEFT JOIN users creator ON pf.created_by_id = creator.id
+        WHERE 1=1
+    '''
+    params = []
+    if g.user['role'] not in PASTORAL_OFFICER_ROLES:
+        query += ' AND pf.assigned_to_id = ?'
+        params.append(g.user['id'])
+    if entity_type:
+        query += ' AND pf.entity_type = ?'
+        params.append(entity_type)
+    if entity_id:
+        query += ' AND pf.entity_id = ?'
+        params.append(entity_id)
+    query += ' ORDER BY pf.created_at DESC'
+    rows = conn.execute(query, params).fetchall()
+    conn.close()
+    return jsonify([dict(row) for row in rows])
+
+@app.route('/api/pastoral/followups', methods=['POST'])
+@login_required
+def create_followup():
+    data = request.get_json() or {}
+    entity_type = (data.get('entity_type') or '').upper()
+    entity_id = data.get('entity_id')
+    assigned_to_id = data.get('assigned_to_id')
+    status = (data.get('status') or 'OPEN').upper()
+    notes = (data.get('notes') or '').strip()
+
+    if entity_type not in {'PRAYER_REQUEST', 'VISITOR', 'MEMBER'} or not entity_id or not assigned_to_id:
+        return jsonify({'error': 'entity_type, entity_id and assigned_to_id are required.'}), 400
+
+    if g.user['role'] not in PASTORAL_OFFICER_ROLES and g.user['id'] != assigned_to_id:
+        return jsonify({'error': 'Only pastoral officers can assign follow-ups.'}), 403
+
+    conn = get_db_connection()
+    followup_id = 'followup-' + str(uuid.uuid4())[:8]
+    conn.execute('''
+        INSERT INTO pastoral_followups (id, entity_type, entity_id, assigned_to_id, status, notes, created_by_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+    ''', (followup_id, entity_type, entity_id, assigned_to_id, status, notes, g.user['id']))
+    conn.commit()
+    conn.close()
+    return jsonify({'id': followup_id, 'entity_type': entity_type, 'entity_id': entity_id, 'assigned_to_id': assigned_to_id, 'status': status}), 201
+
+@app.route('/api/pastoral/visitors', methods=['GET'])
+@login_required
+@roles_required('PASTOR', 'FIRST_ELDER', 'CHURCH_ADMIN', 'CHURCH_CLERK', 'AUTHORIZED_ELDER_READONLY')
+def get_visitors():
+    conn = get_db_connection()
+    rows = conn.execute('''
+        SELECT vr.*, u.full_name as assigned_to_name, creator.full_name as created_by_name
+        FROM visitor_registrations vr
+        LEFT JOIN users u ON vr.assigned_to_id = u.id
+        LEFT JOIN users creator ON vr.created_by_id = creator.id
+        ORDER BY vr.created_at DESC
+    ''').fetchall()
+    conn.close()
+    return jsonify([dict(row) for row in rows])
+
+@app.route('/api/pastoral/visitors', methods=['POST'])
+@login_required
+@roles_required('PASTOR', 'FIRST_ELDER', 'CHURCH_ADMIN', 'CHURCH_CLERK')
+def create_visitor():
+    data = request.get_json() or {}
+    full_name = (data.get('full_name') or '').strip()
+    phone = (data.get('phone') or '').strip()
+    email = (data.get('email') or '').strip()
+    source = (data.get('source') or 'SABBATH_SERVICE').strip().upper()
+    notes = (data.get('notes') or '').strip()
+    assigned_to_id = data.get('assigned_to_id')
+
+    if not full_name:
+        return jsonify({'error': 'Visitor full name is required.'}), 400
+
+    conn = get_db_connection()
+    visitor_id = 'visitor-' + str(uuid.uuid4())[:8]
+    conn.execute('''
+        INSERT INTO visitor_registrations (id, full_name, phone, email, source, status, assigned_to_id, notes, created_by_id)
+        VALUES (?, ?, ?, ?, ?, 'NEW', ?, ?, ?)
+    ''', (visitor_id, full_name, phone or None, email or None, source, assigned_to_id, notes or None, g.user['id']))
+    conn.commit()
+    conn.close()
+    return jsonify({'id': visitor_id, 'full_name': full_name, 'status': 'NEW'}), 201
+
+# -------------------------------------------------------------
 # Church Accountability Centre & Metrics
 # -------------------------------------------------------------
 @app.route('/api/accountability/summary', methods=['GET'])
@@ -1132,6 +1281,86 @@ def revoke_meeting_access(user_id):
     return jsonify({'message': f"Board minutes access revoked for {grant['full_name']}"})
 
 # -------------------------------------------------------------
+# Leadership Action Tracker
+# -------------------------------------------------------------
+@app.route('/api/leadership/actions', methods=['GET'])
+@login_required
+def get_leadership_actions():
+    allowed_roles = {'PASTOR', 'FIRST_ELDER', 'CHURCH_CLERK', 'AUDITOR', 'AUTHORIZED_ELDER_READONLY', 'DEPARTMENT_LEADER'}
+    if g.user['role'] not in allowed_roles:
+        return jsonify({'error': 'Leadership actions are restricted to church officers and department leaders.'}), 403
+
+    conn = get_db_connection()
+    query = '''
+        SELECT r.id, r.resolution_number, r.title, r.description, r.status, r.status_note, r.due_date, r.created_at, r.updated_at,
+               r.assigned_officer_id, u.full_name as assigned_officer_name, u.department_id as assigned_department_id,
+               m.title as meeting_title, m.meeting_type
+        FROM resolutions r
+        JOIN meetings m ON m.id = r.meeting_id
+        LEFT JOIN users u ON u.id = r.assigned_officer_id
+        WHERE 1=1
+    '''
+    params = []
+
+    if g.user['role'] == 'DEPARTMENT_LEADER':
+        department_id = g.user.get('department_id')
+        if not department_id:
+            conn.close()
+            return jsonify([])
+        query += ' AND (r.assigned_officer_id = ? OR u.department_id = ?)'
+        params.extend([g.user['id'], department_id])
+
+    query += ' ORDER BY r.due_date ASC, r.created_at DESC'
+    actions = conn.execute(query, params).fetchall()
+    conn.close()
+    return jsonify([dict(a) for a in actions])
+
+@app.route('/api/leadership/actions/<action_id>/status', methods=['PATCH'])
+@login_required
+def update_leadership_action_status(action_id):
+    allowed_roles = {'PASTOR', 'FIRST_ELDER', 'DEPARTMENT_LEADER'}
+    if g.user['role'] not in allowed_roles:
+        return jsonify({'error': 'Only pastors, elders, and department leaders can update action status.'}), 403
+
+    data = request.get_json() or {}
+    status = (data.get('status') or '').strip().upper()
+    notes = (data.get('notes') or '').strip()
+
+    if status not in {'PENDING', 'IN_PROGRESS', 'COMPLETED'}:
+        return jsonify({'error': 'Status must be one of PENDING, IN_PROGRESS, or COMPLETED.'}), 400
+
+    conn = get_db_connection()
+    action = conn.execute('SELECT r.*, u.department_id AS assigned_department_id FROM resolutions r LEFT JOIN users u ON u.id = r.assigned_officer_id WHERE r.id = ?', (action_id,)).fetchone()
+    if not action:
+        conn.close()
+        return jsonify({'error': 'Action not found'}), 404
+
+    if g.user['role'] == 'DEPARTMENT_LEADER':
+        if action['assigned_officer_id'] != g.user['id']:
+            assigned_department = action['assigned_department_id']
+            if assigned_department != g.user.get('department_id'):
+                conn.close()
+                return jsonify({'error': 'You can only update actions assigned to your department.'}), 403
+
+    now = datetime.now().isoformat(timespec='seconds')
+    conn.execute('''
+        UPDATE resolutions
+        SET status = ?, status_note = COALESCE(?, status_note), updated_at = ?
+        WHERE id = ?
+    ''', (status, notes or None, now, action_id))
+    conn.commit()
+    action = conn.execute('SELECT * FROM resolutions WHERE id = ?', (action_id,)).fetchone()
+    conn.close()
+
+    create_audit_log(g.user['id'], 'UPDATE_LEADERSHIP_ACTION', 'Resolution', action_id, {
+        'status': status,
+        'notes': notes,
+        'assignee_id': action['assigned_officer_id']
+    })
+
+    return jsonify({'id': action_id, 'status': action['status'], 'status_note': action['status_note']})
+
+# -------------------------------------------------------------
 # Database Disaster Recovery / Availability Backup
 # -------------------------------------------------------------
 @app.route('/api/admin/backup', methods=['GET'])
@@ -1200,6 +1429,159 @@ def create_announcement():
 
     create_audit_log(g.user['id'], 'CREATE_ANNOUNCEMENT', 'Announcement', ann_id, {'title': title})
     return jsonify({'id': ann_id, 'title': title}), 201
+
+@app.route('/api/media-library', methods=['GET'])
+@login_required
+def get_media_library():
+    conn = get_db_connection()
+    query = '''
+        SELECT m.*, u.full_name as created_by_name
+        FROM media_library m
+        JOIN users u ON m.created_by_id = u.id
+        WHERE m.is_published = 1
+    '''
+    params = []
+    if g.user['role'] == 'MEMBER':
+        query += " AND m.target_audience IN ('ALL', 'MEMBERS_ONLY')"
+    query += ' ORDER BY m.is_featured DESC, m.created_at DESC'
+    media = conn.execute(query, params).fetchall()
+    conn.close()
+    return jsonify([dict(item) for item in media])
+
+@app.route('/api/media-library', methods=['POST'])
+@login_required
+@roles_required('PASTOR', 'FIRST_ELDER', 'CHURCH_CLERK', 'DEPARTMENT_LEADER', 'HEAD_TREASURER')
+def create_media_library_item():
+    data = request.get_json() or {}
+    title = (data.get('title') or '').strip()
+    description = (data.get('description') or '').strip()
+    category = (data.get('category') or 'SERMON').strip().upper()
+    media_type = (data.get('media_type') or 'VIDEO').strip().upper()
+    speaker_name = (data.get('speaker_name') or '').strip()
+    url = (data.get('url') or '').strip()
+    target_audience = (data.get('target_audience') or 'ALL').strip().upper()
+    is_featured = 1 if data.get('is_featured') else 0
+
+    if not title or not url:
+        return jsonify({'error': 'Title and URL are required'}), 400
+
+    media_id = 'media-' + str(uuid.uuid4())[:8]
+    conn = get_db_connection()
+    conn.execute('''
+        INSERT INTO media_library (id, title, description, category, media_type, speaker_name, url, target_audience, is_featured, is_published, created_by_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
+    ''', (media_id, title, description or None, category, media_type, speaker_name or None, url, target_audience, is_featured, g.user['id']))
+    conn.commit()
+    conn.close()
+
+    create_audit_log(g.user['id'], 'CREATE_MEDIA_LIBRARY_ITEM', 'MediaLibrary', media_id, {
+        'title': title,
+        'category': category,
+        'media_type': media_type
+    })
+    return jsonify({'id': media_id, 'title': title, 'category': category}), 201
+
+@app.route('/api/small-groups', methods=['GET'])
+@login_required
+def get_small_groups():
+    conn = get_db_connection()
+    query = '''
+        SELECT sg.*, u.full_name AS leader_name,
+               (SELECT COUNT(*) FROM small_group_members sgm WHERE sgm.group_id = sg.id) AS member_count
+        FROM small_groups sg
+        LEFT JOIN users u ON u.id = sg.leader_id
+        WHERE sg.is_active = 1
+    '''
+    params = []
+    if g.user['role'] == 'MEMBER':
+        query += " AND sg.category IN ('BIBLE_STUDY', 'PRAYER', 'DISCIPLESHIP')"
+    query += ' ORDER BY sg.created_at DESC'
+    groups = conn.execute(query, params).fetchall()
+    conn.close()
+    return jsonify([dict(group) for group in groups])
+
+@app.route('/api/small-groups', methods=['POST'])
+@login_required
+@roles_required('PASTOR', 'FIRST_ELDER', 'CHURCH_CLERK', 'DEPARTMENT_LEADER', 'HEAD_TREASURER', 'CHURCH_ADMIN')
+def create_small_group():
+    data = request.get_json() or {}
+    name = (data.get('name') or '').strip()
+    category = (data.get('category') or 'BIBLE_STUDY').strip().upper()
+    meeting_day = (data.get('meeting_day') or 'WEDNESDAY').strip().upper()
+    description = (data.get('description') or '').strip()
+    leader_id = (data.get('leader_id') or '').strip()
+    meeting_time = (data.get('meeting_time') or '').strip()
+    location = (data.get('location') or '').strip()
+
+    if not name:
+        return jsonify({'error': 'Group name is required'}), 400
+
+    if leader_id:
+        conn = get_db_connection()
+        leader = conn.execute('SELECT id FROM users WHERE id = ?', (leader_id,)).fetchone()
+        conn.close()
+        if not leader:
+            return jsonify({'error': 'Leader user not found'}), 400
+
+    group_id = 'grp-' + str(uuid.uuid4())[:8]
+    conn = get_db_connection()
+    conn.execute('''
+        INSERT INTO small_groups (id, name, description, category, meeting_day, meeting_time, location, leader_id, is_active, created_by_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
+    ''', (group_id, name, description or None, category, meeting_day, meeting_time or None, location or None, leader_id or None, g.user['id']))
+    conn.commit()
+    conn.close()
+
+    create_audit_log(g.user['id'], 'CREATE_SMALL_GROUP', 'SmallGroup', group_id, {
+        'name': name,
+        'category': category,
+        'leader_id': leader_id
+    })
+    return jsonify({'id': group_id, 'name': name, 'category': category}), 201
+
+@app.route('/api/small-groups/<group_id>/members', methods=['POST'])
+@login_required
+def add_small_group_member(group_id):
+    data = request.get_json() or {}
+    member_id = (data.get('member_id') or g.user.get('member_id') or '').strip()
+
+    if not member_id:
+        return jsonify({'error': 'Member ID is required'}), 400
+
+    conn = get_db_connection()
+    group = conn.execute('SELECT * FROM small_groups WHERE id = ?', (group_id,)).fetchone()
+    if not group:
+        conn.close()
+        return jsonify({'error': 'Group not found'}), 404
+
+    if g.user['role'] == 'MEMBER':
+        if member_id != g.user.get('member_id'):
+            conn.close()
+            return jsonify({'error': 'Members can only join their own profile to a group.'}), 403
+
+    member = conn.execute('SELECT * FROM members WHERE id = ?', (member_id,)).fetchone()
+    if not member:
+        conn.close()
+        return jsonify({'error': 'Member not found'}), 404
+
+    existing = conn.execute('SELECT id FROM small_group_members WHERE group_id = ? AND member_id = ?', (group_id, member_id)).fetchone()
+    if existing:
+        conn.close()
+        return jsonify({'error': 'Member is already in this group'}), 409
+
+    membership_id = 'sgm-' + str(uuid.uuid4())[:8]
+    conn.execute('''
+        INSERT INTO small_group_members (id, group_id, member_id, role)
+        VALUES (?, ?, ?, 'MEMBER')
+    ''', (membership_id, group_id, member_id))
+    conn.commit()
+    conn.close()
+
+    create_audit_log(g.user['id'], 'JOIN_SMALL_GROUP', 'SmallGroupMember', membership_id, {
+        'group_id': group_id,
+        'member_id': member_id
+    })
+    return jsonify({'id': membership_id, 'group_id': group_id, 'member_id': member_id}), 201
 
 @app.route('/api/finance/my-giving', methods=['GET'])
 @login_required
