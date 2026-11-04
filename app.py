@@ -3,16 +3,57 @@ import re
 import sqlite3
 import uuid
 import json
+import hashlib
+import secrets
+import smtplib
+import ssl
+import time
 from datetime import datetime, timedelta
-from flask import Flask, request, jsonify, render_template, send_from_directory, g
+from email.message import EmailMessage
+from flask import Flask, request, jsonify, render_template, g
+from werkzeug.middleware.proxy_fix import ProxyFix
 from database import get_db_connection, init_db, generate_verification_code
 from auth import (
     hash_password, check_password, generate_token,
+    set_auth_cookies, csrf_protect, AUTH_COOKIE, CSRF_COOKIE,
+    is_login_rate_limited, clear_login_rate_limit,
     login_required, roles_required, create_audit_log
 )
 
 app = Flask(__name__, static_folder='static', template_folder='templates')
-app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'churchconnect_flask_secret_key_2026')
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY')
+if not app.config['SECRET_KEY']:
+    raise RuntimeError('SECRET_KEY must be configured; refusing to start with a default secret.')
+app.config['MAX_CONTENT_LENGTH'] = 2 * 1024 * 1024
+app.config['SESSION_COOKIE_SECURE'] = True
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+app.config['SESSION_COOKIE_SAMESITE'] = 'Strict'
+app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1)
+
+@app.before_request
+def enforce_request_security():
+    if not app.testing and os.environ.get('FORCE_HTTPS', 'true').lower() not in ('0', 'false', 'no'):
+        if not request.is_secure:
+            secure_url = request.url.replace('http://', 'https://', 1)
+            return '', 308, {'Location': secure_url}
+
+    if request.path.startswith('/api/') and request.method in ('POST', 'PUT', 'PATCH'):
+        if request.mimetype != 'application/json':
+            return jsonify({'error': 'Requests must use application/json.'}), 415
+        if request.content_length and not isinstance(request.get_json(silent=True), dict):
+            return jsonify({'error': 'A JSON object is required.'}), 400
+    return csrf_protect()
+
+@app.after_request
+def add_security_headers(response):
+    response.headers.setdefault('X-Content-Type-Options', 'nosniff')
+    response.headers.setdefault('X-Frame-Options', 'DENY')
+    response.headers.setdefault('Referrer-Policy', 'strict-origin-when-cross-origin')
+    response.headers.setdefault('Permissions-Policy', 'camera=(), microphone=(), geolocation=()')
+    response.headers.setdefault('Content-Security-Policy', "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; img-src 'self' data:; connect-src 'self'; script-src 'self' https://cdn.jsdelivr.net 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:")
+    if request.is_secure:
+        response.headers.setdefault('Strict-Transport-Security', 'max-age=31536000; includeSubDomains')
+    return response
 
 # Initialize DB on start
 init_db()
@@ -21,8 +62,8 @@ init_db()
 EMAIL_REGEX = re.compile(r'^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$')
 
 def validate_password_strength(pw: str) -> tuple[bool, str]:
-    if len(pw) < 8:
-        return False, "Password must be at least 8 characters long."
+    if not isinstance(pw, str) or len(pw) < 12:
+        return False, "Password must be at least 12 characters long."
     if not re.search(r'[A-Z]', pw):
         return False, "Password must contain at least one uppercase letter."
     if not re.search(r'[a-z]', pw):
@@ -86,14 +127,19 @@ def verify_receipt(receipt_ref):
 @app.route('/api/auth/register', methods=['POST'])
 def register():
     data = request.get_json() or {}
-    email = data.get('email', '').strip().lower()
+    email = data.get('email', '')
     password = data.get('password', '')
-    full_name = data.get('full_name', '').strip()
-    phone = data.get('phone', '').strip()
+    full_name = data.get('full_name', '')
+    phone = data.get('phone', '')
     member_number = data.get('member_number', '').strip()
     department_id = data.get('department_id')
 
-    if not email or not EMAIL_REGEX.match(email):
+    if not isinstance(email, str) or not isinstance(full_name, str) or not isinstance(phone, str) or not isinstance(password, str):
+        return jsonify({'error': 'Email, full name, phone and password must be text.'}), 400
+    email = email.strip().lower()
+    full_name = full_name.strip()
+    phone = phone.strip()
+    if not email or not EMAIL_REGEX.fullmatch(email):
         return jsonify({'error': 'A valid email address is required (e.g., name@domain.ke).'}), 400
 
     is_valid_pw, pw_err = validate_password_strength(password)
@@ -109,24 +155,18 @@ def register():
         conn.close()
         return jsonify({'error': 'An account with this email address is already registered. Please sign in.'}), 409
 
-    member = None
-    if member_number:
-        member = conn.execute('SELECT * FROM members WHERE member_number = ?', (member_number,)).fetchone()
-    if not member and (email or phone):
-        member = conn.execute('SELECT * FROM members WHERE (email IS NOT NULL AND LOWER(email) = ?) OR (phone IS NOT NULL AND phone = ?)', (email, phone)).fetchone()
+    member_id = 'mem-' + str(uuid.uuid4())[:8]
+    names = full_name.split(' ', 1)
+    first_name = names[0]
+    last_name = names[1] if len(names) > 1 else 'Member'
+    assigned_num = f"CCK-{datetime.now().year}-{uuid.uuid4().hex[:8].upper()}"
+    valid_department = conn.execute('SELECT 1 FROM departments WHERE id = ?', (department_id,)).fetchone() if department_id else None
+    department_id = department_id if valid_department else None
 
-    member_id = member['id'] if member else None
-    if not member_id:
-        member_id = 'mem-' + str(uuid.uuid4())[:8]
-        names = full_name.split(' ', 1)
-        first_name = names[0]
-        last_name = names[1] if len(names) > 1 else 'Member'
-        assigned_num = member_number or f"SDA-{datetime.now().year}-{str(uuid.uuid4().int)[:4]}"
-
-        conn.execute('''
-            INSERT INTO members (id, member_number, first_name, last_name, phone, email, gender, status, department_id)
-            VALUES (?, ?, ?, ?, ?, ?, 'MALE', 'ACTIVE', ?)
-        ''', (member_id, assigned_num, first_name, last_name, phone or None, email, department_id or None))
+    conn.execute('''
+        INSERT INTO members (id, member_number, first_name, last_name, phone, email, gender, status, department_id)
+        VALUES (?, ?, ?, ?, ?, ?, 'MALE', 'ACTIVE', ?)
+    ''', (member_id, assigned_num, first_name, last_name, phone or None, email, department_id))
 
     user_id = 'usr-' + str(uuid.uuid4())[:8]
     pw_hash = hash_password(password)
@@ -150,22 +190,115 @@ def register():
         'member_id': member_id,
         'department_id': department_id
     }
-    token = generate_token(user_dict)
-
-    return jsonify({
+    token, csrf_token = generate_token(user_dict)
+    response = jsonify({
         'message': 'Registration successful! Welcome to ChurchConnect Kenya.',
-        'token': token,
         'user': user_dict
     }), 201
+    response = app.make_response(response)
+    return set_auth_cookies(response, token, csrf_token)
+
+@app.route('/api/auth/logout', methods=['POST'])
+def logout():
+    response = jsonify({'message': 'Signed out'})
+    secure = os.environ.get('COOKIE_SECURE', 'true').lower() not in ('0', 'false', 'no')
+    response.delete_cookie(AUTH_COOKIE, path='/', secure=secure, httponly=True, samesite='Strict')
+    response.delete_cookie(CSRF_COOKIE, path='/', secure=secure, httponly=False, samesite='Strict')
+    return response
+
+@app.route('/api/auth/password-reset/request', methods=['POST'])
+def request_password_reset():
+    data = request.get_json() or {}
+    email = data.get('email')
+    if not isinstance(email, str) or not EMAIL_REGEX.fullmatch(email.strip()):
+        return jsonify({'error': 'A valid email address is required.'}), 400
+    email = email.strip().lower()
+    generic_response = {'message': 'If the account exists, password reset instructions will be sent.'}
+
+    mail_settings = ('SMTP_HOST', 'SMTP_FROM', 'PUBLIC_BASE_URL')
+    if not all(os.environ.get(key) for key in mail_settings):
+        return jsonify(generic_response), 202
+
+    conn = get_db_connection()
+    user = conn.execute('SELECT id FROM users WHERE LOWER(email) = ? AND active = 1', (email,)).fetchone()
+    if not user:
+        conn.close()
+        return jsonify(generic_response), 202
+
+    raw_token = secrets.token_urlsafe(32)
+    now = int(time.time())
+    conn.execute('DELETE FROM password_reset_tokens WHERE user_id = ?', (user['id'],))
+    conn.execute('''
+        INSERT INTO password_reset_tokens (id, user_id, token_hash, expires_at, created_at)
+        VALUES (?, ?, ?, ?, ?)
+    ''', (str(uuid.uuid4()), user['id'], hashlib.sha256(raw_token.encode()).hexdigest(), now + 3600, now))
+    conn.commit()
+    conn.close()
+
+    reset_url = f"{os.environ['PUBLIC_BASE_URL'].rstrip('/')}/?reset_token={raw_token}"
+    message = EmailMessage()
+    message['Subject'] = 'ChurchConnect password reset'
+    message['From'] = os.environ['SMTP_FROM']
+    message['To'] = email
+    message.set_content(f'Use this one-time link within 60 minutes to reset your password:\n\n{reset_url}\n\nIf you did not request this, ignore this email.')
+    try:
+        smtp_port = int(os.environ.get('SMTP_PORT', '587'))
+        with smtplib.SMTP(os.environ['SMTP_HOST'], smtp_port, timeout=10) as smtp:
+            smtp.starttls(context=ssl.create_default_context())
+            if os.environ.get('SMTP_USER'):
+                smtp.login(os.environ['SMTP_USER'], os.environ.get('SMTP_PASSWORD', ''))
+            smtp.send_message(message)
+    except Exception:
+        conn = get_db_connection()
+        conn.execute('DELETE FROM password_reset_tokens WHERE token_hash = ?', (hashlib.sha256(raw_token.encode()).hexdigest(),))
+        conn.commit()
+        conn.close()
+    return jsonify(generic_response), 202
+
+@app.route('/api/auth/password-reset/confirm', methods=['POST'])
+def confirm_password_reset():
+    data = request.get_json() or {}
+    raw_token = data.get('token')
+    password = data.get('password')
+    if not isinstance(raw_token, str) or not isinstance(password, str):
+        return jsonify({'error': 'A reset token and new password are required.'}), 400
+    valid_password, password_error = validate_password_strength(password)
+    if not valid_password:
+        return jsonify({'error': password_error}), 400
+
+    now = int(time.time())
+    token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
+    conn = get_db_connection()
+    try:
+        conn.execute('BEGIN IMMEDIATE')
+        result = conn.execute('''
+            UPDATE password_reset_tokens SET used_at = ?
+            WHERE token_hash = ? AND used_at IS NULL AND expires_at > ?
+        ''', (now, token_hash, now))
+        if result.rowcount != 1:
+            conn.rollback()
+            return jsonify({'error': 'Reset link is invalid or expired.'}), 400
+        reset = conn.execute('SELECT user_id FROM password_reset_tokens WHERE token_hash = ?', (token_hash,)).fetchone()
+        conn.execute('UPDATE users SET password_hash = ?, failed_attempts = 0, locked_until = NULL WHERE id = ?', (hash_password(password), reset['user_id']))
+        conn.commit()
+    finally:
+        conn.close()
+    return jsonify({'message': 'Password reset successfully. Please sign in.'})
 
 @app.route('/api/auth/login', methods=['POST'])
 def login():
     data = request.get_json() or {}
-    email = data.get('email', '').strip().lower()
+    email = data.get('email', '')
     password = data.get('password', '')
 
+    if not isinstance(email, str) or not isinstance(password, str):
+        return jsonify({'error': 'Email and password must be text.'}), 400
+    email = email.strip().lower()
     if not email or not password:
         return jsonify({'error': 'Email and password are required'}), 400
+    client_ip = request.remote_addr or 'unknown'
+    if is_login_rate_limited(email, client_ip):
+        return jsonify({'error': 'Too many sign-in attempts. Try again later.'}), 429
 
     conn = get_db_connection()
     user = conn.execute('''
@@ -210,6 +343,7 @@ def login():
 
     conn.execute('UPDATE users SET failed_attempts = 0, locked_until = NULL WHERE id = ?', (user['id'],))
     conn.commit()
+    clear_login_rate_limit(email, client_ip)
 
     # Auto-generate member record if user has none
     member_id = user['member_id']
@@ -236,13 +370,13 @@ def login():
     del user_dict['failed_attempts']
     del user_dict['locked_until']
 
-    token = generate_token(user_dict)
+    token, csrf_token = generate_token(user_dict)
     create_audit_log(user['id'], 'LOGIN', 'User', user['id'], {'email': user['email'], 'role': user['role']})
 
-    return jsonify({
-        'token': token,
+    response = jsonify({
         'user': user_dict
     })
+    return set_auth_cookies(response, token, csrf_token)
 
 @app.route('/api/auth/me', methods=['GET'])
 @login_required
@@ -497,14 +631,21 @@ def get_approval_committees():
 
 @app.route('/api/finance/vouchers', methods=['GET'])
 @login_required
-@roles_required('HEAD_TREASURER', 'ASSISTANT_TREASURER', 'PASTOR', 'FIRST_ELDER', 'DEPARTMENT_LEADER', 'AUDITOR', 'AUTHORIZED_ELDER_READONLY')
 def get_vouchers():
+    allowed_roles = {'HEAD_TREASURER', 'ASSISTANT_TREASURER', 'PASTOR', 'FIRST_ELDER', 'DEPARTMENT_LEADER', 'AUDITOR', 'AUTHORIZED_ELDER_READONLY'}
+    if g.user['role'] not in allowed_roles and not (g.user['role'] == 'MEMBER' and g.user.get('department_id')):
+        return jsonify({
+            'error': f"Access forbidden: Role '{g.user['role']}' does not have required permissions"
+        }), 403
+
     dept_id = request.args.get('department_id')
     status = request.args.get('status')
 
     restricted_dept = None
-    if g.user['role'] == 'DEPARTMENT_LEADER' and g.user.get('department_id'):
-        restricted_dept = g.user['department_id']
+    if g.user['role'] in ('DEPARTMENT_LEADER', 'MEMBER'):
+        restricted_dept = g.user.get('department_id')
+        if not restricted_dept:
+            return jsonify([])
 
     conn = get_db_connection()
     query = '''
@@ -521,7 +662,7 @@ def get_vouchers():
     '''
     params = []
 
-    target_dept = dept_id or restricted_dept
+    target_dept = restricted_dept if restricted_dept else dept_id
     if target_dept:
         query += ' AND v.department_id = ?'
         params.append(target_dept)
@@ -1083,9 +1224,9 @@ def get_my_giving():
     envelopes = conn.execute('''
         SELECT e.*
         FROM tithe_offering_envelopes e
-        WHERE e.member_id = ? OR e.donor_phone = ?
+        WHERE e.member_id = ?
         ORDER BY e.transaction_date DESC
-    ''', (member['id'], member['phone'])).fetchall()
+    ''', (member['id'],)).fetchall()
 
     result_envelopes = []
     total_tithe = 0.0
@@ -1130,6 +1271,34 @@ def get_members():
     department_id = request.args.get('department_id', '').strip()
 
     conn = get_db_connection()
+    if g.user['role'] == 'DEPARTMENT_LEADER':
+        scoped_dept = g.user.get('department_id')
+        if not scoped_dept:
+            conn.close()
+            return jsonify([])
+
+        query = '''
+            SELECT m.*, d.name as department_name, d.code as department_code
+            FROM members m
+            LEFT JOIN departments d ON m.department_id = d.id
+            WHERE m.department_id = ?
+        '''
+        params = [scoped_dept]
+        if status:
+            query += ' AND m.status = ?'
+            params.append(status)
+        if department_id and department_id != scoped_dept:
+            query += ' AND m.department_id = ?'
+            params.append(department_id)
+        if search:
+            query += ' AND (m.first_name LIKE ? OR m.last_name LIKE ? OR m.member_number LIKE ? OR m.phone LIKE ?)'
+            like = f'%{search}%'
+            params.extend([like, like, like, like])
+        query += ' ORDER BY m.last_name ASC, m.first_name ASC'
+        members = conn.execute(query, params).fetchall()
+        conn.close()
+        return jsonify([dict(m) for m in members])
+
     if is_officer:
         query = '''
             SELECT m.*, d.name as department_name, d.code as department_code
@@ -1153,14 +1322,18 @@ def get_members():
         conn.close()
         return jsonify([dict(m) for m in members])
     else:
+        member_id = g.user.get('member_id')
+        if not member_id:
+            conn.close()
+            return jsonify([])
         query = '''
             SELECT m.id, m.member_number, m.first_name, m.last_name, m.gender, m.status, d.name as department_name
             FROM members m
             LEFT JOIN departments d ON m.department_id = d.id
-            WHERE m.status = 'ACTIVE'
+            WHERE m.id = ? AND m.status = 'ACTIVE'
             ORDER BY m.last_name ASC, m.first_name ASC
         '''
-        members = conn.execute(query).fetchall()
+        members = conn.execute(query, (member_id,)).fetchall()
         conn.close()
         return jsonify([dict(m) for m in members])
 
@@ -1224,6 +1397,8 @@ def get_departments():
         else:
             del d_dict['budget_allocation']
             del d_dict['budget_spent']
+            d_dict.pop('leader_email', None)
+            d_dict.pop('leader_phone', None)
         result.append(d_dict)
     return jsonify(result)
 
@@ -1316,10 +1491,9 @@ def update_department(dept_id):
             if previous_leader:
                 conn.execute('''
                     UPDATE users
-                    SET role = 'MEMBER',
-                        department_id = CASE WHEN department_id = ? THEN NULL ELSE department_id END
+                    SET role = 'MEMBER'
                     WHERE id = ?
-                ''', (dept_id, previous_leader['id']))
+                ''', (previous_leader['id'],))
 
         conn.execute('''
             UPDATE departments
@@ -1599,6 +1773,8 @@ def get_events():
     if department_id:
         conditions.append('e.department_id = ?')
         params.append(department_id)
+    if g.user['role'] == 'MEMBER':
+        conditions.append('e.is_public = 1')
     if search:
         conditions.append('(e.title LIKE ? OR e.location LIKE ? OR d.name LIKE ?)')
         pattern = f'%{search}%'
@@ -1882,8 +2058,8 @@ def get_dashboard_overview():
                 FROM envelope_items ei
                 JOIN tithe_offering_envelopes e ON ei.envelope_id = e.id
                 JOIN fund_categories fc ON ei.fund_category_id = fc.id
-                WHERE (e.member_id = ? OR e.donor_phone = ?) AND e.status = 'CONFIRMED'
-            ''', (member_id or '', user_phone or '')).fetchall()
+                WHERE e.member_id = ? AND e.status = 'CONFIRMED'
+            ''', (member_id or '',)).fetchall()
 
             for it in my_items:
                 my_giving_total += float(it['amount'])
@@ -2103,15 +2279,24 @@ def get_documents():
 @login_required
 @roles_required('PASTOR', 'FIRST_ELDER', 'CHURCH_CLERK', 'HEAD_TREASURER', 'AUDITOR')
 def create_document():
-    data = request.get_json() or {}
-    title = data.get('title', '').strip()
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({'error': 'A JSON object is required.'}), 400
+    title = data.get('title')
     category = data.get('category', 'GENERAL')
-    description = data.get('description', '').strip()
-    file_content = data.get('file_content', '').strip()
+    description = data.get('description', '')
+    file_content = data.get('file_content')
     audience = data.get('audience', 'OFFICERS')
 
-    if not title or not file_content:
+    if not all(isinstance(value, str) for value in (title, category, description, file_content, audience)):
+        return jsonify({'error': 'Document fields must be text.'}), 400
+    title, category, description, audience = (value.strip() for value in (title, category, description, audience))
+    if not title or not file_content.strip():
         return jsonify({'error': 'Title and content are required'}), 400
+    if len(title) > 160 or len(description) > 1000 or len(file_content.encode('utf-8')) > 1_000_000:
+        return jsonify({'error': 'Document title, description, or content exceeds the allowed size.'}), 413
+    if category not in {'POLICY', 'MINUTES', 'CIRCULAR', 'FINANCIAL', 'GENERAL'} or audience not in {'ALL', 'OFFICERS'}:
+        return jsonify({'error': 'Invalid document category or audience.'}), 400
 
     doc_id = 'doc-' + str(uuid.uuid4())[:8]
     conn = get_db_connection()

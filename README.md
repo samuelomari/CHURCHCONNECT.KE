@@ -457,6 +457,7 @@ SECRET_KEY=your_long_random_secret_key_here
 JWT_SECRET=your_long_random_jwt_secret_here
 DATABASE_FILE=churchconnect.db
 PORT=5000
+FORCE_HTTPS=true
 FLASK_DEBUG=false
 ```
 

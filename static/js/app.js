@@ -5,7 +5,6 @@
 
 // App State
 const state = {
-  token: localStorage.getItem('cc_token') || null,
   currentUser: null,
   activeSection: 'dashboard',
   fundCategories: [],
@@ -16,6 +15,8 @@ const state = {
   chartInstance: null,
   hasMeetingAccess: false
 };
+
+const getCookie = (name) => document.cookie.split('; ').find((cookie) => cookie.startsWith(`${name}=`))?.split('=').slice(1).join('=') || '';
 
 // Kenyan Shilling Formatter
 const formatKES = (val) => {
@@ -51,15 +52,16 @@ const api = async (endpoint, options = {}) => {
     'Content-Type': 'application/json',
     ...(options.headers || {})
   };
-  if (state.token) {
-    headers['Authorization'] = `Bearer ${state.token}`;
+  const csrfToken = getCookie('cc_csrf');
+  if (csrfToken) {
+    headers['X-CSRF-Token'] = csrfToken;
   }
 
   try {
-    const res = await fetch(endpoint, { ...options, headers });
+    const res = await fetch(endpoint, { ...options, headers, credentials: 'same-origin' });
     const data = await res.json();
     if (!res.ok) {
-      if (res.status === 401 && !endpoint.includes('/api/auth/login')) {
+      if (res.status === 401 && state.currentUser && !endpoint.includes('/api/auth/login')) {
         handleLogout('Session expired. Please sign in again.');
       }
       throw new Error(data.error || 'Server error occurred');
@@ -86,6 +88,7 @@ const showAppView = () => {
 };
 
 const toggleAuthTab = (tab) => {
+  document.querySelectorAll('.auth-tab-btn').forEach(button => button.style.display = '');
   document.querySelectorAll('.auth-tab-btn').forEach(b => b.classList.remove('active'));
   document.querySelectorAll('.auth-form').forEach(f => f.classList.remove('active'));
 
@@ -98,11 +101,44 @@ const toggleAuthTab = (tab) => {
   }
 };
 
-const quickFillLogin = async (email, password) => {
-  document.getElementById('login-email').value = email;
-  document.getElementById('login-password').value = password;
+const showPasswordResetRequest = () => {
+  document.querySelectorAll('.auth-tab-btn').forEach(button => { button.style.display = 'none'; });
+  document.querySelectorAll('.auth-form').forEach(form => form.classList.remove('active'));
+  document.getElementById('form-password-reset-request').classList.add('active');
+};
+
+const returnToLogin = () => {
+  history.replaceState(null, '', '/');
+  document.getElementById('reset-token').value = '';
   toggleAuthTab('login');
-  await executeLogin(email, password);
+};
+
+const submitPasswordResetRequest = async (event) => {
+  event.preventDefault();
+  try {
+    const result = await api('/api/auth/password-reset/request', {
+      method: 'POST',
+      body: JSON.stringify({ email: document.getElementById('reset-request-email').value.trim() })
+    });
+    showToast(result.message, 'success');
+    returnToLogin();
+  } catch (_) {}
+};
+
+const submitPasswordReset = async (event) => {
+  event.preventDefault();
+  try {
+    await api('/api/auth/password-reset/confirm', {
+      method: 'POST',
+      body: JSON.stringify({
+        token: document.getElementById('reset-token').value,
+        password: document.getElementById('reset-new-password').value
+      })
+    });
+    showToast('Password reset. Please sign in with your new password.', 'success');
+    document.getElementById('form-password-reset-confirm').reset();
+    returnToLogin();
+  } catch (_) {}
 };
 
 const handleLoginSubmit = async (e) => {
@@ -119,9 +155,7 @@ const executeLogin = async (email, password) => {
       body: JSON.stringify({ email, password })
     });
 
-    state.token = res.token;
     state.currentUser = res.user;
-    localStorage.setItem('cc_token', res.token);
 
     showToast(`Welcome back, ${res.user.full_name}!`, 'success');
     setupUserSession(res.user);
@@ -147,8 +181,8 @@ const handleRegisterSubmit = async (e) => {
   }
 
   // Password complexity check
-  if (password.length < 8) {
-    showToast('Password must be at least 8 characters long', 'error');
+  if (password.length < 12) {
+    showToast('Password must be at least 12 characters long', 'error');
     return;
   }
   if (!/[A-Z]/.test(password) || !/[a-z]/.test(password) || !/[0-9]/.test(password)) {
@@ -169,18 +203,17 @@ const handleRegisterSubmit = async (e) => {
       })
     });
 
-    state.token = res.token;
     state.currentUser = res.user;
-    localStorage.setItem('cc_token', res.token);
 
     showToast(res.message || 'Registration successful! Welcome.', 'success');
     setupUserSession(res.user);
   } catch (err) {}
 };
 
-const handleLogout = (msg = 'Signed out successfully') => {
-  localStorage.removeItem('cc_token');
-  state.token = null;
+const handleLogout = async (msg = 'Signed out successfully') => {
+  try {
+    await api('/api/auth/logout', { method: 'POST', body: JSON.stringify({}) });
+  } catch (_) {}
   state.currentUser = null;
   showAuthView();
   showToast(msg, 'info');
@@ -2513,17 +2546,17 @@ const loadDocuments = async () => {
       <div style="border:1px solid var(--border);border-radius:var(--radius);padding:16px;margin-bottom:12px;">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;">
           <div>
-            <div style="font-weight:600;font-size:14px;color:var(--sda-blue-dark);">${d.title}</div>
+            <div style="font-weight:600;font-size:14px;color:var(--sda-blue-dark);">${escapeHtml(d.title)}</div>
             <div style="font-size:11.5px;color:var(--text-muted);margin-top:3px;">
-              <span class="badge ${catColors[d.category] || 'badge-secondary'}">${d.category}</span>
-              &nbsp; Uploaded by ${d.uploaded_by_name} &nbsp;|&nbsp; ${d.created_at.split(' ')[0]}
-              &nbsp;|&nbsp; <span class="badge badge-secondary">${d.audience}</span>
+              <span class="badge ${catColors[d.category] || 'badge-secondary'}">${escapeHtml(d.category)}</span>
+              &nbsp; Uploaded by ${escapeHtml(d.uploaded_by_name || '')} &nbsp;|&nbsp; ${escapeHtml(d.created_at.split(' ')[0])}
+              &nbsp;|&nbsp; <span class="badge badge-secondary">${escapeHtml(d.audience)}</span>
             </div>
-            ${d.description ? `<p style="font-size:12.5px;color:var(--text-main);margin-top:6px;">${d.description}</p>` : ''}
+            ${d.description ? `<p style="font-size:12.5px;color:var(--text-main);margin-top:6px;">${escapeHtml(d.description)}</p>` : ''}
           </div>
           <div style="display:flex;gap:6px;">
-            <button class="btn btn-outline btn-sm" onclick="viewDocument('${d.id}')">View</button>
-            ${['PASTOR','CHURCH_CLERK'].includes(state.currentUser?.role) ? `<button class="btn btn-danger btn-sm" onclick="deleteDocument('${d.id}', '${d.title.replace(/'/g,"&#39;")}')">Delete</button>` : ''}
+            <button class="btn btn-outline btn-sm" onclick="viewDocument('${escapeHtml(d.id)}')">View</button>
+            ${['PASTOR','CHURCH_CLERK'].includes(state.currentUser?.role) ? `<button class="btn btn-danger btn-sm" onclick="deleteDocument('${escapeHtml(d.id)}')">Delete</button>` : ''}
           </div>
         </div>
       </div>
@@ -2562,8 +2595,8 @@ const submitDocument = async (e) => {
   } catch (err) {}
 };
 
-const deleteDocument = async (docId, title) => {
-  if (!confirm(`Delete document "${title}"? This cannot be undone.`)) return;
+const deleteDocument = async (docId) => {
+  if (!confirm('Delete this document? This cannot be undone.')) return;
   try {
     await api(`/api/documents/${docId}`, { method: 'DELETE' });
     showToast('Document deleted', 'success');
@@ -2626,20 +2659,21 @@ const closeModal = (id) => {
 // 17. INITIALIZATION (MANDATORY LOGIN WALL)
 // ==========================================
 const initApp = async () => {
-  const token = localStorage.getItem('cc_token');
-  if (!token) {
+  const resetToken = new URLSearchParams(location.search).get('reset_token');
+  if (resetToken) {
+    document.querySelectorAll('.auth-tab-btn').forEach(button => { button.style.display = 'none'; });
+    document.querySelectorAll('.auth-form').forEach(form => form.classList.remove('active'));
+    document.getElementById('reset-token').value = resetToken;
+    document.getElementById('form-password-reset-confirm').classList.add('active');
     showAuthView();
     return;
   }
-
-  state.token = token;
   try {
     const user = await api('/api/auth/me');
     state.currentUser = user;
     setupUserSession(user);
   } catch (err) {
-    // If token is invalid or expired
-    handleLogout();
+    showAuthView();
   }
 };
 

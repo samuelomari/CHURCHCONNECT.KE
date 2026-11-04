@@ -44,37 +44,8 @@
           <button type="submit" class="btn btn-primary" style="width: 100%; padding: 12px; margin-top: 6px;">
             Sign In to ChurchConnect
           </button>
+          <button type="button" class="btn btn-outline" style="width: 100%; margin-top: 8px;" onclick="showPasswordResetRequest()">Forgot password?</button>
 
-          <!-- Quick Demo Sign-In for Elders, Officers and Members -->
-          <div class="quick-demo-accounts">
-            <div class="quick-demo-title">Quick Demo Sign-In (Select Persona):</div>
-            <div class="demo-account-grid">
-              <button type="button" class="demo-btn" onclick="quickFillLogin('pastor@churchconnect.ke', 'password123')">
-                <strong>Pr. David Ochieng</strong>
-                <span>Church Pastor</span>
-              </button>
-              <button type="button" class="demo-btn" onclick="quickFillLogin('elder.samuel@churchconnect.ke', 'password123')">
-                <strong>Elder Samuel Omari</strong>
-                <span>First Elder</span>
-              </button>
-              <button type="button" class="demo-btn" onclick="quickFillLogin('treasurer@churchconnect.ke', 'password123')">
-                <strong>Grace Wanjiku</strong>
-                <span>Head Treasurer</span>
-              </button>
-              <button type="button" class="demo-btn" onclick="quickFillLogin('clerk@churchconnect.ke', 'password123')">
-                <strong>Ruth Chebet</strong>
-                <span>Church Clerk</span>
-              </button>
-              <button type="button" class="demo-btn" onclick="quickFillLogin('youth.leader@churchconnect.ke', 'password123')">
-                <strong>Kevin Mwangi</strong>
-                <span>Youth Leader</span>
-              </button>
-              <button type="button" class="demo-btn" style="border-color: var(--sda-gold);" onclick="quickFillLogin('john.k@gmail.com', 'password123')">
-                <strong>John Kariuki</strong>
-                <span style="color: var(--sda-gold-hover); font-weight: 600;">Church Member</span>
-              </button>
-            </div>
-          </div>
         </form>
 
         <!-- Member Registration Form -->
@@ -103,8 +74,8 @@
 
           <div class="form-group">
             <label class="form-label">Password Protection</label>
-            <input type="password" id="reg-password" class="form-control" placeholder="Create strong password" required autocomplete="new-password">
-            <span style="font-size: 11px; color: var(--text-muted);">Min. 8 characters with uppercase, lowercase, and a number.</span>
+            <input type="password" id="reg-password" class="form-control" placeholder="Create strong password" required minlength="12" autocomplete="new-password">
+            <span style="font-size: 11px; color: var(--text-muted);">At least 12 characters with uppercase, lowercase, and a number.</span>
           </div>
 
           <div class="form-group">
@@ -117,6 +88,25 @@
           <button type="submit" class="btn btn-gold" style="width: 100%; padding: 12px; margin-top: 6px;">
             Create Member Account
           </button>
+        </form>
+
+        <form id="form-password-reset-request" class="auth-form" onsubmit="submitPasswordResetRequest(event)">
+          <div class="form-group">
+            <label class="form-label" for="reset-request-email">Email Address</label>
+            <input type="email" id="reset-request-email" class="form-control" required autocomplete="email">
+          </div>
+          <button type="submit" class="btn btn-primary" style="width: 100%;">Send reset link</button>
+          <button type="button" class="btn btn-outline" style="width: 100%; margin-top: 8px;" onclick="returnToLogin()">Back to sign in</button>
+        </form>
+
+        <form id="form-password-reset-confirm" class="auth-form" onsubmit="submitPasswordReset(event)">
+          <input type="hidden" id="reset-token">
+          <div class="form-group">
+            <label class="form-label" for="reset-new-password">New Password</label>
+            <input type="password" id="reset-new-password" class="form-control" required minlength="12" autocomplete="new-password">
+          </div>
+          <button type="submit" class="btn btn-primary" style="width: 100%;">Set new password</button>
+          <button type="button" class="btn btn-outline" style="width: 100%; margin-top: 8px;" onclick="returnToLogin()">Back to sign in</button>
         </form>
       </div>
     </div>

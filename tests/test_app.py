@@ -2,6 +2,8 @@ import os
 import unittest
 import json
 import tempfile
+import hashlib
+import time
 
 # Set environment before importing app
 tmp_db = tempfile.NamedTemporaryFile(suffix='.db', delete=False)
@@ -12,6 +14,8 @@ os.environ['JWT_SECRET'] = 'test_jwt_secret'
 from app import app
 from database import get_db_connection, init_db
 from seed import seed_database
+
+app.config['TESTING'] = True
 
 class ChurchConnectTestCase(unittest.TestCase):
     @classmethod
@@ -31,8 +35,8 @@ class ChurchConnectTestCase(unittest.TestCase):
             'email': email,
             'password': password
         })
-        data = res.get_json()
-        return data.get('token')
+        auth_cookie = next(cookie for cookie in res.headers.getlist('Set-Cookie') if cookie.startswith('cc_access='))
+        return auth_cookie.split(';', 1)[0].split('=', 1)[1]
 
     def test_01_login_success_and_failure(self):
         token = self.get_token('pastor@churchconnect.ke')
@@ -63,7 +67,7 @@ class ChurchConnectTestCase(unittest.TestCase):
             'phone': '254700112233'
         })
         self.assertEqual(res_weak_pw.status_code, 400)
-        self.assertIn('Password must be at least 8 characters', res_weak_pw.get_json()['error'])
+        self.assertIn('Password must be at least 12 characters', res_weak_pw.get_json()['error'])
 
         # 3. Successful registration
         res_success = self.client.post('/api/auth/register', json={
@@ -75,7 +79,8 @@ class ChurchConnectTestCase(unittest.TestCase):
         })
         self.assertEqual(res_success.status_code, 201)
         data = res_success.get_json()
-        self.assertIn('token', data)
+        self.assertNotIn('token', data)
+        self.assertTrue(any(cookie.startswith('cc_access=') and 'HttpOnly' in cookie and 'Secure' in cookie for cookie in res_success.headers.getlist('Set-Cookie')))
         self.assertEqual(data['user']['role'], 'MEMBER')
 
     def test_03_member_non_confidential_access_and_security_blocking(self):
@@ -413,6 +418,90 @@ class ChurchConnectTestCase(unittest.TestCase):
             'adult_count': -1
         })
         self.assertEqual(invalid_attendance.status_code, 400)
+
+    def test_14_cookie_auth_csrf_and_logout(self):
+        response = self.client.post('/api/auth/login', base_url='https://localhost', json={
+            'email': 'pastor@churchconnect.ke',
+            'password': 'password123'
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn('token', response.get_json())
+        auth_cookie = next(cookie for cookie in response.headers.getlist('Set-Cookie') if cookie.startswith('cc_access='))
+        csrf_cookie = next(cookie for cookie in response.headers.getlist('Set-Cookie') if cookie.startswith('cc_csrf='))
+        self.assertIn('HttpOnly', auth_cookie)
+        self.assertIn('Secure', auth_cookie)
+        self.assertIn('SameSite=Strict', auth_cookie)
+        self.assertIn('Secure', csrf_cookie)
+
+        blocked = self.client.post('/api/notifications/mark-read', base_url='https://localhost', json={})
+        self.assertEqual(blocked.status_code, 403)
+        csrf_value = self.client.get_cookie('cc_csrf', domain='localhost').value
+        allowed = self.client.post('/api/notifications/mark-read', base_url='https://localhost', json={}, headers={'X-CSRF-Token': csrf_value})
+        self.assertEqual(allowed.status_code, 200)
+        logged_out = self.client.post('/api/auth/logout', base_url='https://localhost', json={}, headers={'X-CSRF-Token': csrf_value})
+        self.assertEqual(logged_out.status_code, 200)
+        self.assertIsNone(self.client.get_cookie('cc_access', domain='localhost'))
+
+    def test_15_login_rate_limit_and_server_json_validation(self):
+        for _ in range(10):
+            response = self.client.post('/api/auth/login', json={
+                'email': 'not-a-real-account@example.ke',
+                'password': 'wrong'
+            })
+            self.assertEqual(response.status_code, 401)
+        limited = self.client.post('/api/auth/login', json={
+            'email': 'not-a-real-account@example.ke',
+            'password': 'wrong'
+        })
+        self.assertEqual(limited.status_code, 429)
+        wrong_content_type = self.client.post('/api/auth/login', data='{}', content_type='text/plain')
+        self.assertEqual(wrong_content_type.status_code, 415)
+
+    def test_16_password_reset_token_is_one_time_and_expiring(self):
+        account = self.client.post('/api/auth/register', json={
+            'email': 'reset.target@churchconnect.ke',
+            'password': 'InitialPassword123',
+            'full_name': 'Reset Target'
+        }).get_json()['user']
+        conn = get_db_connection()
+        raw_token = 'one-time-reset-token'
+        conn.execute('''
+            INSERT INTO password_reset_tokens (id, user_id, token_hash, expires_at, created_at)
+            VALUES (?, ?, ?, ?, ?)
+        ''', ('reset-valid', account['id'], hashlib.sha256(raw_token.encode()).hexdigest(), int(time.time()) + 60, int(time.time())))
+        conn.execute('''
+            INSERT INTO password_reset_tokens (id, user_id, token_hash, expires_at, created_at)
+            VALUES (?, ?, ?, ?, ?)
+        ''', ('reset-expired', 'usr-pastor', hashlib.sha256(b'expired-reset-token').hexdigest(), int(time.time()) - 1, int(time.time()) - 3601))
+        conn.commit()
+        conn.close()
+
+        reset = self.client.post('/api/auth/password-reset/confirm', json={
+            'token': raw_token,
+            'password': 'BrandNewPassword123'
+        })
+        self.assertEqual(reset.status_code, 200)
+        reused = self.client.post('/api/auth/password-reset/confirm', json={
+            'token': raw_token,
+            'password': 'AnotherNewPassword123'
+        })
+        expired = self.client.post('/api/auth/password-reset/confirm', json={
+            'token': 'expired-reset-token',
+            'password': 'BrandNewPassword123'
+        })
+        self.assertEqual(reused.status_code, 400)
+        self.assertEqual(expired.status_code, 400)
+
+    def test_17_member_and_department_leader_data_scope(self):
+        member_token = self.get_token('john.k@gmail.com')
+        members = self.client.get('/api/members', headers={'Authorization': f'Bearer {member_token}'})
+        self.assertEqual([member['id'] for member in members.get_json()], ['mem-001'])
+
+        leader_token = self.get_token('youth.leader@churchconnect.ke')
+        vouchers = self.client.get('/api/finance/vouchers?department_id=dept-ss', headers={
+            'Authorization': f'Bearer {leader_token}'
+        })
+        self.assertTrue(all(voucher['department_id'] == 'dept-ay' for voucher in vouchers.get_json()))
 
 if __name__ == '__main__':
     unittest.main()

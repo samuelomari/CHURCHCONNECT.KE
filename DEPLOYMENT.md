@@ -10,10 +10,11 @@ single-page frontend served by Flask. The easiest **free** options are:
 3. Connect your GitHub repo. Render auto-detects `requirements.txt` and
    `Procfile`.
 4. Set these environment variables in the Render dashboard:
-   - `SECRET_KEY` = a long random string
-   - `JWT_SECRET` = a long random string
+   - `SECRET_KEY` = a long random string (32+ chars)
+   - `JWT_SECRET` = a different long random string (32+ chars)
    - `DATABASE_FILE` = `/opt/render/project/src/churchconnect.db` (or attach a
      persistent disk)
+   - `FORCE_HTTPS` = `true`
    - `FLASK_DEBUG` = `false`
 5. Build command: `pip install -r requirements.txt`
    Start command: `gunicorn app:app --bind 0.0.0.0:$PORT --workers 2`
@@ -77,10 +78,11 @@ PythonAnywhere, staying on SQLite is simplest and durable.
 
 | Var | Required | Description |
 |---|---|---|
-| `SECRET_KEY` | yes | Flask secret key |
-| `JWT_SECRET` | yes | JWT signing secret |
+| `SECRET_KEY` | yes | Flask secret key (32+ chars) |
+| `JWT_SECRET` | yes | JWT signing secret (32+ chars) |
 | `DATABASE_FILE` | no | Path to SQLite file (default `churchconnect.db`) |
 | `PORT` | no | Port (default 5000; set by host) |
+| `FORCE_HTTPS` | no | Redirect HTTP to HTTPS in production (`true`) |
 | `FLASK_DEBUG` | no | `true`/`false` (default false) |
 
 ## First-run seeding
